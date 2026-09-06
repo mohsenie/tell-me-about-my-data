@@ -161,13 +161,20 @@ def _layer2_regime_events(new_fp, base_fp, matches, unmatched) -> list[dict]:
 
 
 def detect_drift(source: str, dates: list[str], vessel: str,
-                 baseline: dict, with_mi: bool = False) -> dict:
+                 baseline: dict, with_mi: bool = False,
+                 use_ae: bool = False) -> dict:
     """Compare the new window (given date partitions) to the known-good baseline.
     Returns a structured report with layer1 (structure drift) + layer2 (events).
 
     If the baseline persists a regime MODEL, the new window is ASSIGNED to those
     exact regimes (stable identity, like-for-like diff). Older baselines with no
-    model fall back to re-clustering + centroid matching."""
+    model fall back to re-clustering + centroid matching.
+
+    use_ae (optional): also run the autoencoder joint backend (nonlinear manifold).
+    Off by default — it trains a per-regime AE from the baseline window at call
+    time (heavier, stochastic-but-seeded). Added as `ae_anomalies` alongside the
+    Mahalanobis `joint_anomalies`; skipped silently if the backend is unavailable
+    or the baseline has no dates to train on."""
     globs = [g for g in config.source_globs_for_dates(source, dates, vessel)
              if _exists(g)]
     if not globs:
@@ -204,6 +211,12 @@ def detect_drift(source: str, dates: list[str], vessel: str,
             joint = _window_joint_anomalies(cols, data, model, base_env)
             if joint is not None:
                 out["joint_anomalies"] = joint
+        # OPTIONAL autoencoder backend (nonlinear manifold), behind the flag.
+        if use_ae and base_env is not None:
+            ae = _window_ae_anomalies(source, baseline, vessel, model,
+                                      base_env, cols, data)
+            if ae is not None:
+                out["ae_anomalies"] = ae
         return out
 
     # legacy path: re-cluster + centroid match (baselines built before model reuse)
@@ -242,6 +255,36 @@ def _window_joint_anomalies(cols, data, model, base_env: dict) -> dict | None:
         return None
     labels = assign_labels(model, ccols, clean)
     return detect_joint(model, ccols, clean, labels, base_env)
+
+
+def _window_ae_anomalies(source, baseline, vessel, model, base_env,
+                         win_cols, win_data) -> dict | None:
+    """Train per-regime autoencoders from the BASELINE (known-good) window, then
+    score the new window. Returns None if the AE backend is unavailable or the
+    baseline has no trainable dates. Uses the SAME non-monotonic columns the
+    Mahalanobis envelope used (base_env['mcolumns']) so the two are comparable."""
+    from .autoencoder import ae_available, build_ae_backends, detect_ae
+    if not ae_available():
+        return None
+    base_dates = baseline.get("dates", [])
+    bglobs = [g for g in config.source_globs_for_dates(source, base_dates, vessel)
+              if _exists(g)]
+    if not bglobs:
+        return None
+    bcols, bdata = load_numeric(bglobs)
+    bccols, bclean = clean_frame(bcols, bdata)
+    if not bccols or len(bclean) < 200:
+        return None
+    used = base_env.get("mcolumns", list(model["columns"]))
+    blabels = assign_labels(model, bccols, bclean)
+    backends = build_ae_backends(model, bccols, bclean, blabels, used)
+    if backends is None:
+        return None
+    wccols, wclean = clean_frame(win_cols, win_data)
+    if not wccols or len(wclean) == 0:
+        return None
+    wlabels = assign_labels(model, wccols, wclean)
+    return detect_ae(model, wccols, wclean, wlabels, backends)
 
 
 def _exists(glob_str: str) -> bool:

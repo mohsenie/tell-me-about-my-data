@@ -251,8 +251,13 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
 - **Scales to a month+ with no changes** (measured): query ops stay sub-second to
   ~1s on ~14M rows/source; discovery is flat (row-capped sampling); the only cost
   that grows with calendar length is baseline-building (per-day loop). See
-  `TODO.md` for remaining hardening (geocoding place names, optional autoencoder
-  backend for the joint detector).
+  `TODO.md` for remaining hardening (geocoding place names, discovery-quality
+  refinements).
+- **Optional autoencoder backend** (`ttmd detect --ae`, off by default): a per-regime
+  MLP autoencoder for regimes whose normal region is a nonlinear manifold a
+  covariance ellipsoid can't fit; reconstruction error scores each point, per-feature
+  error keeps the attribution. Opt-in because it trades the training-free character
+  for nonlinear reach.
 - **Ask "why?"** after an anomaly answer and it EXPLAINS the detected change —
   grounded in the structured findings (which couplings/steps moved), your
   expert-confirmed facts, and manual excerpts — offering what to check, never

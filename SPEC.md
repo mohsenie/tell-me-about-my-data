@@ -391,8 +391,18 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   deterministic, light numpy. Persisted in the baseline (`joint_envelopes`),
   surfaced as `joint_anomalies` in the drift result, rendered as "JOINT ANOMALY",
   folded into summarize/reasoning/explain. Observed deviation, never cause.
-  Remaining extension (see TODO.md): an optional autoencoder backend for strongly
-  nonlinear normal manifolds.
+- **Optional autoencoder backend (nonlinear joint manifold)** — for regimes whose
+  normal region is a curved manifold an ellipsoid can't fit. anomaly/autoencoder.py
+  trains a small per-regime MLP autoencoder (sklearn MLPRegressor — no new heavy
+  dep, no torch) on the known-good rows; reconstruction error is the score,
+  threshold = empirical p99.9 of training errors (self-consistent ~0.1%), and the
+  PER-FEATURE error preserves attribution (which signals reconstructed worst).
+  DELIBERATELY optional and secondary: behind `use_ae` (CLI `ttmd detect --ae`),
+  OFF by default — it adds a seeded-but-stochastic training step and only runs
+  where a regime has >=200 rows, so it regresses the training-free character and is
+  opt-in. Trained on-the-fly from the baseline window (the MLP isn't JSON-persisted).
+  If sklearn were unavailable, `ae_available()` is False and everything else is
+  unchanged. Surfaced as `ae_anomalies`, rendered alongside the Mahalanobis result.
 - **Efficiency / consumption-per-distance (cross-source)**: "average fuel
   consumption per 20km / per mile / per nautical mile" integrates the rate over
   the window (litres) and divides by the track distance travelled in that window

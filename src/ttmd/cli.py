@@ -129,7 +129,7 @@ def cmd_detect(args) -> None:
         sys.exit(f"no data for '{args.source}' in the requested window.")
     baseline = load_baseline(args.source)
     result = detect_drift(args.source, dates, args.vessel, baseline,
-                          with_mi=not args.no_mi)
+                          with_mi=not args.no_mi, use_ae=getattr(args, "ae", False))
     print(render_drift(result))
 
 
@@ -506,6 +506,8 @@ def main(argv: list[str] | None = None) -> None:
     dt.add_argument("--from", default=None, help="window start date YYYY-MM-DD")
     dt.add_argument("--to", default=None, help="window end date YYYY-MM-DD")
     dt.add_argument("--no-mi", action="store_true", help="skip mutual information (faster)")
+    dt.add_argument("--ae", action="store_true",
+                    help="also run the optional autoencoder joint backend (nonlinear)")
     dt.set_defaults(fn=cmd_detect)
 
     rp = sub.add_parser("report", help="human-readable report from a discovery artifact")

@@ -291,3 +291,60 @@ def test_joint_baseline_and_detector_selfconsistency(has_data):
     ja = res.get("joint_anomalies")
     assert ja is not None
     assert ja["overall_flagged_fraction"] <= 0.02     # self-consistent
+
+
+# ---------------- optional autoencoder backend ----------------
+def test_ae_available_is_bool():
+    from ttmd.anomaly import ae_available
+    assert isinstance(ae_available(), bool)
+
+
+def test_ae_learns_nonlinear_manifold():
+    """The AE flags ~0.1% of its training data and flags an off-manifold point —
+    the nonlinear case a covariance ellipsoid can't capture. Skips if no backend."""
+    from ttmd.anomaly import ae_available
+    if not ae_available():
+        pytest.skip("AE backend unavailable")
+    import numpy as np
+    from ttmd.anomaly import train_ae, ae_errors
+    rng = np.random.default_rng(0)
+    x = rng.uniform(-1, 1, size=(2000,))
+    X = np.column_stack([x, np.sin(3 * x), x ** 2]) + rng.normal(0, 0.03, size=(2000, 3))
+    b = train_ae(X)
+    assert b is not None and b["df"] == 3
+    err = ae_errors(X, b)
+    assert (err > b["threshold"]).mean() <= 0.01          # self flags very little
+    off = np.array([[0.0, 0.0, 1.0]])                     # off the learned curve
+    assert ae_errors(off, b)[0] > b["threshold"]
+
+
+def test_train_ae_too_few_rows_returns_none():
+    from ttmd.anomaly import ae_available, train_ae
+    if not ae_available():
+        pytest.skip("AE backend unavailable")
+    import numpy as np
+    assert train_ae(np.zeros((10, 3))) is None            # < _MIN_AE_ROWS
+
+
+@pytest.mark.slow
+def test_detect_ae_flag_off_by_default_and_optional(has_data):
+    """use_ae is opt-in: absent by default; present + self-consistent when on."""
+    from ttmd.anomaly import ae_available
+    src = "engine" if "engine" in config.discover_sources() else _first_multiday_source()
+    if not src:
+        pytest.skip("no source")
+    dates = config.available_dates(src)
+    if len(dates) < 2:
+        pytest.skip("need >=2 days")
+    bl = build_baseline(src, dates[:2], config.DEFAULT_VESSEL, with_mi=False)
+    if "joint_envelopes" not in bl:
+        pytest.skip("no envelopes (degenerate)")
+    off = detect_drift(src, dates[:2], config.DEFAULT_VESSEL, bl, with_mi=False)
+    assert "ae_anomalies" not in off                      # off by default
+    if not ae_available():
+        pytest.skip("AE backend unavailable")
+    on = detect_drift(src, dates[:2], config.DEFAULT_VESSEL, bl,
+                      with_mi=False, use_ae=True)
+    ae = on.get("ae_anomalies")
+    assert ae is not None
+    assert ae["overall_flagged_fraction"] <= 0.02         # self-consistent

@@ -21,6 +21,7 @@ def render_drift(result: dict) -> str:
     l2 = result.get("layer2_regime_events", [])
     lt = result.get("layer2_transition_events")
     lj = result.get("joint_anomalies")
+    lae = result.get("ae_anomalies")
 
     # Layer 1 — behavioral anomaly (likely fault)
     lines.append("BEHAVIORAL ANOMALY (within-mode relationship drift — possible fault):")
@@ -85,6 +86,24 @@ def render_drift(result: dict) -> str:
         if not findings:
             lines.append("  none — the joint pattern of readings sits inside each "
                          "mode's normal envelope.")
+        else:
+            for f in findings[:6]:
+                sigs = ", ".join(f"{s['signal']} ({s['share']*100:.0f}%)"
+                                 for s in f.get("top_signals", [])[:3])
+                lines.append(f"  - mode {f['regime']}: {f['flagged_fraction']*100:.1f}% "
+                             f"of points unusual (confidence: {f['confidence']})"
+                             + (f"; driven mainly by {sigs}" if sigs else "") + ".")
+            lines.append(f"  overall: {overall*100:.1f}% of points flagged.")
+        lines.append("")
+
+    # Autoencoder backend (optional, nonlinear) — same shape as JOINT
+    if lae is not None:
+        findings = [f for f in lae.get("findings", []) if f.get("n_flagged", 0) > 0]
+        lines.append("JOINT ANOMALY (autoencoder / nonlinear backend):")
+        overall = lae.get("overall_flagged_fraction", 0.0)
+        if not findings:
+            lines.append("  none — readings reconstruct within each mode's learned "
+                         "normal manifold.")
         else:
             for f in findings[:6]:
                 sigs = ", ".join(f"{s['signal']} ({s['share']*100:.0f}%)"

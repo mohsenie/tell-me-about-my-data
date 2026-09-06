@@ -247,14 +247,16 @@ learn from the known-good window per regime, persist, score a new window.
       detect_drift adds joint_anomalies; render_drift shows "JOINT ANOMALY"; folded
       into summarize/reasoning/explain facts. Self-consistency verified (~0.1%).
       Training-free, deterministic, explainable. Point-level scoring. Tested.
-- [ ] **Autoencoder backend (optional, later)**: a per-regime AE (train-on-normal;
-      reconstruction error = score) for STRONGLY NONLINEAR normal manifolds the
-      covariance model can't capture. Behind a flag; adds a training loop + dep
-      (stochastic, needs enough per-regime data). MUST keep per-feature error
-      attribution so it isn't a black-box number (preserve the persona/operator
-      explainability). The heavier, nonlinear version of the Mahalanobis idea.
-      NOTE: an AE regresses the "no training / deterministic / self-explaining"
-      properties — hence optional and second, only where covariance is insufficient.
+- [x] **Autoencoder backend (optional)** — DONE. anomaly/autoencoder.py: per-regime
+      MLP autoencoder (sklearn MLPRegressor, no torch/new dep) trained on known-good
+      rows; reconstruction error = score; threshold = empirical p99.9 (self-consistent
+      ~0.1%); PER-FEATURE error preserves attribution. Behind use_ae (CLI ttmd detect
+      --ae), OFF by default; only trains where a regime has >=200 rows; seeded for
+      determinism; trained on-the-fly from the baseline window (MLP not JSON-persisted).
+      ae_available() gates it so the system is unchanged if sklearn is missing.
+      Surfaced as ae_anomalies, rendered alongside the Mahalanobis joint result.
+      Tested (nonlinear manifold learning + off-manifold flag, too-few-rows None,
+      off-by-default + self-consistency e2e).
 
 ---
 

@@ -25,6 +25,8 @@ from .timescale import (
     multiscale_drift, fingerprint_distance, group_dates, period_key)
 from .joint import (
     build_joint_envelopes, detect_joint, fit_envelope, mahalanobis)
+from .autoencoder import (
+    ae_available, train_ae, ae_errors, build_ae_backends, detect_ae)
 
 __all__ = [
     "build_baseline", "save_baseline", "load_baseline", "has_baseline",
@@ -33,4 +35,5 @@ __all__ = [
     "build_transition_matrix", "detect_transition_anomalies", "runs_from_labels",
     "multiscale_drift", "fingerprint_distance", "group_dates", "period_key",
     "build_joint_envelopes", "detect_joint", "fit_envelope", "mahalanobis",
+    "ae_available", "train_ae", "ae_errors", "build_ae_backends", "detect_ae",
 ]
