@@ -248,8 +248,12 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
 - **Scales to a month+ with no changes** (measured): query ops stay sub-second to
   ~1s on ~14M rows/source; discovery is flat (row-capped sampling); the only cost
   that grows with calendar length is baseline-building (per-day loop). See
-  `TODO.md` for remaining hardening (geocoding place names, feeding drift into the
-  LLM explanation, joint/Mahalanobis detector).
+  `TODO.md` for remaining hardening (geocoding place names, joint/Mahalanobis
+  detector).
+- **Ask "why?"** after an anomaly answer and it EXPLAINS the detected change —
+  grounded in the structured findings (which couplings/steps moved), your
+  expert-confirmed facts, and manual excerpts — offering what to check, never
+  asserting a cause.
 - **Multi-timescale** (built): groups periods (day/month/year) and separates a
   *sudden break* (an abrupt step between adjacent periods) from *slow drift* (a
   gradual accumulation vs the earliest period); folded into the summary/reasoning.

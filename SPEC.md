@@ -365,8 +365,18 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   (cumulative). A large adjacent step -> sudden_break; large cumulative with only
   small steps -> slow_drift (both -> sudden_and_slow; neither -> stable). Folded
   into summarize/reasoning facts as `temporal_pattern`. Observed pattern, not cause.
-  Remaining extensions (see TODO.md): feeding drift into the LLM interpretation
-  layer, and the joint (Mahalanobis) multivariate detector.
+- **Drift explanation ("why?" follow-up)** — the interpretation layer can EXPLAIN
+  a detected change. `ChatDeps.detect_anomaly` stashes the structured findings
+  (`_last_drift`); when the previous turn was an anomaly/summary answer and the
+  user asks a short causal follow-up ("why?", "what could cause that?"), a
+  deterministic guard (`Orchestrator._is_why_followup`) routes to
+  `ChatDeps.explain_drift` instead of a fresh discovery-reasoning query.
+  `explain_drift` grounds the LLM in the compact structured findings (which
+  couplings moved + in which mode, sequencing changes, behavioral flags) plus
+  expert-confirmed asset facts, field-semantic signal meanings, and manual
+  excerpts (keyword doc search on the changed signals). The prompt forbids
+  asserting a cause — it offers directions to CHECK and cites manual facts.
+  Remaining extensions (see TODO.md): the joint (Mahalanobis) multivariate detector.
 - **Efficiency / consumption-per-distance (cross-source)**: "average fuel
   consumption per 20km / per mile / per nautical mile" integrates the rate over
   the window (litres) and divides by the track distance travelled in that window

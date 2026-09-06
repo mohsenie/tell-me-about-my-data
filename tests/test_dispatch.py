@@ -88,3 +88,58 @@ def test_scope_refuses_offdomain(fake, deps, kb_ship):
     reply = o.send("what film should I watch tonight?")
     from ttmd.interpretation import REFUSAL
     assert reply == REFUSAL
+
+
+# ---------------- drift explanation ("why?" follow-up) ----------------
+def test_is_why_followup_guard():
+    """The deterministic causal-follow-up guard fires on short 'why' questions
+    and not on fresh queries."""
+    f = Orchestrator._is_why_followup
+    for m in ["why?", "Why", "what could cause that?", "how come", "explain",
+              "what does that mean"]:
+        assert f(m), m
+    for m in ["what is the average fuel consumption",
+              "plot rpm vs speed",
+              "where is the ship right now please tell me the coordinates"]:
+        assert not f(m), m
+
+
+def test_explain_drift_none_without_prior(deps, has_data):
+    """No prior anomaly result -> explain_drift returns None (nothing to explain)."""
+    assert getattr(deps, "_last_drift", None) is None
+    assert deps.explain_drift("why?") is None
+
+
+def test_explain_drift_uses_findings(fake, deps, kb_ship, has_data):
+    """With a stashed structured drift result, explain_drift grounds the provider
+    call and returns text (never asserting cause is the prompt's job)."""
+    deps.provider = fake(intent="reasoning")
+    deps._last_drift = {
+        "source": "engine",
+        "result": {
+            "layer1_structure_drift": [
+                {"regime": "1", "confidence": "high",
+                 "changed_edges": [{"edge": ["OilPressure", "EngineSpeed"],
+                                    "change": "weakened", "delta": -0.3}]}],
+            "layer2_regime_events": [],
+            "layer2_transition_events": {"findings": [
+                {"type": "unseen_transition", "from": 0, "to": 2}]},
+        },
+        "behavioral": ["stayed in one location ~24h, ~37x usual"],
+    }
+    out = deps.explain_drift("why did that happen?")
+    assert isinstance(out, str) and len(out) > 0
+
+
+def test_why_followup_routes_to_explain(fake, deps, kb_ship, has_data):
+    """After an anomaly turn, a bare 'why?' routes to explain_drift instead of a
+    fresh reasoning query."""
+    o, _ = _session(fake, deps, kb_ship, intent="reasoning")
+    o._last_intent = "anomaly"
+    deps._last_drift = {"source": "engine",
+                        "result": {"layer1_structure_drift": [],
+                                   "layer2_regime_events": []},
+                        "behavioral": []}
+    reply = o.send("why?")
+    assert isinstance(reply, str) and len(reply) > 0
+    assert o._last_intent == "reasoning"     # follow-up consumed, state advanced

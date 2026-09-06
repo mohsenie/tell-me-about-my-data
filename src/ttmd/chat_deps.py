@@ -62,6 +62,25 @@ _SUMMARY_SYSTEM = (
     "short caveat line to that effect.")
 _SUMMARY_USER = "Source: {source}\nComputed facts (JSON):\n{facts}\n\nSummary:"
 
+_EXPLAIN_SYSTEM = (
+    "You explain an ALREADY-DETECTED change in an asset's telemetry to help a "
+    "human decide what to check. You are given: the structured detector findings "
+    "(which sensor relationships changed and in which operating mode, any change in "
+    "the ORDER modes occur, and whether the change was sudden or gradual), plus "
+    "expert-confirmed facts about this asset and any manual excerpts. "
+    "RULES: (1) NEVER assert the cause — a change can be a developing fault OR a "
+    "legitimate operational change (route, load, weather, deliberate operation); "
+    "offer the plausible directions to CHECK, not a verdict. (2) Ground every "
+    "statement in the given findings/facts — do not invent sensors or numbers. "
+    "(3) When a manual/asset fact is relevant, use it and say so. (4) Be concise "
+    "and concrete: name the specific signals/couplings that moved and suggest what "
+    "to inspect. End with a one-line reminder that this is an observed change, not "
+    "a confirmed cause.")
+_EXPLAIN_USER = ("Asset type: {asset_type}\nDetector findings (JSON):\n{findings}\n\n"
+                 "Expert-confirmed asset facts:\n{facts}\n\n"
+                 "Relevant manual excerpts:\n{docs}\n\n"
+                 "Question: {question}\n\nExplanation:")
+
 from ttmd.interpretation.fields import describe_fields
 from ttmd.interpretation.documents import DocumentIndex
 from ttmd.interpretation.interpret import interpret_report
@@ -1291,7 +1310,63 @@ class ChatDeps:
         base_dates = set(baseline.get("dates", []))
         recent = [d for d in dates if d not in base_dates] or dates[-2:]
         result = detect_drift(source, recent, self.vessel, baseline, with_mi=False)
+        # stash the structured findings so a follow-up "why?" can EXPLAIN them
+        self._last_drift = {"source": source, "result": result,
+                            "behavioral": behavioral}
         return beh_txt + render_drift(result)
+
+    def explain_drift(self, message):
+        """Explain the LAST detected drift/behavioral change (a chat 'why?' follow-
+        up). Grounds the LLM in the STRUCTURED detector findings + expert-confirmed
+        asset facts + manual excerpts; never asserts the cause. Returns None if no
+        prior anomaly result is available to explain."""
+        import json as _json
+        last = getattr(self, "_last_drift", None)
+        if not last:
+            return None
+        source = last["source"]
+        result = last["result"]
+        # compact, LLM-friendly findings: only the interpretable parts
+        findings = {
+            "structure_drift": [
+                {"regime": f["regime"], "confidence": f.get("confidence"),
+                 "changed": [{"signals": c["edge"], "change": c["change"],
+                              "delta": c["delta"]} for c in f.get("changed_edges", [])[:6]]}
+                for f in result.get("layer1_structure_drift", [])
+            ],
+            "regime_events": result.get("layer2_regime_events", [])[:4],
+        }
+        trans = result.get("layer2_transition_events")
+        if trans and trans.get("findings"):
+            findings["sequencing_changes"] = [
+                {"type": f["type"], "from": f["from"], "to": f["to"]}
+                for f in trans["findings"][:5]]
+        if last.get("behavioral"):
+            findings["behavioral"] = last["behavioral"]
+        # ground: field semantics (to translate signals), asset facts, docs
+        fs = self.kb.field_semantics(source)
+        if fs:
+            findings["signal_meanings"] = {
+                f["field"]: f.get("meaning") or f.get("role")
+                for f in fs if f.get("field")}
+        facts = "\n".join("- " + f.get("fact", "") for f in self.kb.asset_facts()) or "(none)"
+        docs_txt = "(none)"
+        if config.USER_DOC_DIR.is_dir() and any(config.USER_DOC_DIR.glob("*.pdf")):
+            try:
+                idx = DocumentIndex.build(config.USER_DOC_DIR)
+                terms = [s for f in result.get("layer1_structure_drift", [])
+                         for c in f.get("changed_edges", []) for s in c["edge"]]
+                hits = idx.search(" ".join(dict.fromkeys(terms)) or source, k=3)
+                if hits:
+                    docs_txt = "\n".join(
+                        f"- {c.text[:300]} ({c.citation()})" for c, _score in hits)
+            except Exception:
+                pass
+        return self.provider.complete(
+            _EXPLAIN_SYSTEM,
+            _EXPLAIN_USER.format(asset_type=self.asset_type,
+                                 findings=_json.dumps(findings, indent=2),
+                                 facts=facts, docs=docs_txt, question=message))
 
     def describe_regimes(self, source, message):
         """Describe the OPERATING MODES (regimes) discovery found: how much time

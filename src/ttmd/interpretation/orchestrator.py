@@ -247,9 +247,26 @@ class Orchestrator:
         self.history: list[dict] = []
         self._described_attempted = set()  # sources we've auto-described (once each)
         self._clarifying = None   # original message awaiting a disambiguation reply
+        self._last_intent = None  # intent of the previous turn (for 'why?' follow-up)
 
     def _hist(self) -> str:
         return "\n".join(f"{h['role']}: {h['text']}" for h in self.history[-6:])
+
+    @staticmethod
+    def _is_why_followup(message: str) -> bool:
+        """A short causal follow-up ('why?', 'what could cause that', 'how come',
+        'what does that mean') that should EXPLAIN the previous anomaly answer
+        rather than start a fresh discovery-reasoning query. Deterministic guard —
+        the LLM otherwise routes a bare 'why?' to generic reasoning and loses the
+        drift context."""
+        low = (message or "").strip().lower().rstrip("?.! ")
+        if not low or len(low.split()) > 8:
+            return False
+        triggers = ("why", "how come", "what could cause", "what causes",
+                    "what caused", "what might cause", "what does that mean",
+                    "what does this mean", "explain", "elaborate", "cause")
+        return any(low == t or low.startswith(t + " ") or t in low
+                   for t in triggers)
 
     # quantity words that signal "give me a NUMBER" (not a field-meaning request).
     # NOTE: "mean" is deliberately excluded — it's overloaded ("what does X mean")
@@ -288,6 +305,20 @@ class Orchestrator:
             self.history.append({"role": "user", "text": message})
             self.history.append({"role": "assistant", "text": reply})
             return reply
+
+        # "why?" FOLLOW-UP: if the previous answer was an anomaly/summary result
+        # and the user asks a short causal follow-up, EXPLAIN the detected change
+        # (grounded in the structured findings + KB + docs) instead of starting a
+        # fresh reasoning query that would lose the drift context.
+        if (getattr(self, "_last_intent", None) in ("anomaly", "summarize")
+                and self._is_why_followup(message)):
+            explanation = self.deps.explain_drift(message)
+            if explanation:
+                reply = self._frame("reasoning", message, explanation)
+                self.history.append({"role": "user", "text": message})
+                self.history.append({"role": "assistant", "text": reply})
+                self._last_intent = "reasoning"
+                return reply
 
         if not check_scope(message, self.provider, context=self._hist() or None).in_scope:
             return REFUSAL
@@ -359,6 +390,7 @@ class Orchestrator:
         reply = self._frame(intent, message, reply)
         self.history.append({"role": "user", "text": message})
         self.history.append({"role": "assistant", "text": reply})
+        self._last_intent = intent
         return reply
 
     # intents whose answers EXPLAIN (worth reframing per audience). Deterministic

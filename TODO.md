@@ -101,13 +101,15 @@ REMAINING (drift-detector hardening — the three to finish the detector):
       (helpers + classifier branches + e2e). Year-over-year is the same mechanism at
       granularity="year" once multi-year data exists.
 
-- [ ] **3. Feed drift into the interpretation layer**: let the LLM EXPLAIN a
-      flagged drift (which edges changed, in which mode) grounded in the knowledge
-      base + docs — reuse the existing interpret pipeline. Detector output is
-      structured (per-edge deltas, regime, confidence); pass it to interpret so the
-      user gets "oil-pressure/speed coupling weakened in cruise — consistent with
-      X per the manual", never asserting cause. Wire a chat follow-up ("why?") from
-      an anomaly result into reasoning.
+- [x] **3. Feed drift into the interpretation layer** — DONE. ChatDeps.explain_drift
+      grounds the LLM in the STRUCTURED findings (which couplings moved + in which
+      mode, sequencing changes, behavioral flags) + expert asset facts + field-
+      semantic signal meanings + manual excerpts (keyword doc search on the changed
+      signals). detect_anomaly stashes _last_drift; Orchestrator._is_why_followup
+      (deterministic guard) routes a short causal follow-up ("why?", "what could
+      cause that?") after an anomaly/summary turn into explain_drift instead of a
+      fresh reasoning query. Prompt forbids asserting cause. Tested (guard + None-
+      path + grounded call + routing).
 
 ---
 
