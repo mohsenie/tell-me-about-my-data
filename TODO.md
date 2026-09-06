@@ -262,11 +262,17 @@ learn from the known-good window per regime, persist, score a new window.
 
 ## P1 — Discovery quality (makes results trustworthy)
 
-- [ ] **Partial / conditional dependence** to prune the common-driver haze. On the
-      engine "everything relates to everything via load", so clusters are dense
-      and low-information (nmea: 329 edges, silhouette 0.10). Compute dependence
-      conditioned on load / other signals to find DIRECT edges. Without this the
-      cross-relationship analysis is noisy.
+- [x] **Partial / conditional dependence** — DONE. dependence.partial_correlation_
+      matrix computes |partial correlation| for every pair from the precision matrix
+      (inverse of the ridge-regularized correlation matrix), controlling for ALL
+      other signals. pairwise_dependence annotates each edge with partial + a direct
+      flag: an edge with high marginal Pearson but partial<0.1 that shrank by >0.15
+      is INDUCED (common-driver haze), direct=False. Verified: a synthetic C->A,C->B
+      collapses A~B (0.92->0.02 direct=False) while A~C survives; on engine,
+      boost~oil-pressure (0.81) is flagged indirect (both driven by load). Surfaced
+      in _edge_facts (direct/partial) + phrasing (describe_edge says "INDIRECT ...
+      mostly explained by other signals"). Tested. Thresholds PARTIAL_DIRECT=0.1,
+      PARTIAL_SHRINK=0.15.
 - [ ] **Time-aware (block) permutation significance** to kill autocorrelation
       artifacts. Slow-drifting signals (fuel temp) show phantom dependence; the
       current row-shuffle permutation breaks time structure. Use block permutation

@@ -89,6 +89,15 @@ raw fused telemetry (unlabeled, common 10Hz grid)
 Comparing Pearson vs dCor classifies each edge's KIND (linear / nonlinear / none).
 The nonlinear-but-zero-linear case is the one a plain correlation heatmap misses.
 
+**Partial (conditional) correlation** further separates DIRECT edges from
+common-driver-INDUCED ones: computed from the precision matrix (inverse of the
+correlation matrix), it measures each pair's association after controlling for all
+other signals. A pair with high marginal correlation but a partial correlation that
+collapses (< 0.1, having shrunk > 0.15) is flagged `direct=False` — its link is
+mostly shared-driver haze, not a real dependency. Every edge carries `partial` +
+`direct`; the report describes induced edges as "INDIRECT — mostly explained by
+other signals".
+
 ### Multi-timescale
 Compute fingerprints at day / month / year scales. Adjacent-period comparison
 catches sudden breaks; long-baseline comparison catches slow drift that hides at
@@ -140,9 +149,11 @@ short scales. Year-over-year handles seasonality.
 ## 5. Honest limits / open problems
 
 - **Common-driver haze.** On coupled assets most signals co-move (e.g. via load),
-  so graphs look dense and low-information (seen on nmea: 329 edges, silhouette
-  0.10). **Need partial/conditional dependence** to find DIRECT edges vs
-  "related only via a common driver". NOT yet implemented.
+  so graphs look dense. ADDRESSED: partial/conditional dependence
+  (partial_correlation_matrix, from the precision matrix, controlling for all other
+  signals) annotates each edge direct vs INDUCED — a strong marginal edge whose
+  partial correlation collapses is flagged as a common-driver artifact, not a direct
+  link (e.g. engine boost~oil-pressure, both driven by load). Reported in phrasing.
 - **Autocorrelation artifacts.** Slow-drifting signals (fuel temp) can show
   phantom dependence. **Need time-aware (block) permutation significance.** NOT
   yet implemented.
@@ -485,8 +496,9 @@ Remaining highlights:
    window+integral). Remaining: geocoding place names -> coordinates (opt-in,
    data/config-driven port list or geocoder) and auto leg-detection from the track
    (so "the last voyage" needs no endpoints).
-3. **Discovery refinements** — partial/conditional dependence (prune common-driver
-   haze); time-aware permutation significance (autocorrelation artifacts).
+3. **Discovery refinements** — partial/conditional dependence DONE (prunes
+   common-driver haze); still TODO: time-aware permutation significance
+   (autocorrelation artifacts), fused-clustering blur.
 4. **Retrieval upgrade** — embeddings for document search (current keyword overlap
    pulls ToC noise). **Report formatting** — constrain verbose LLM output.
 5. **Unify query fuel_consumption** to resolve signal/unit/aggregation from field

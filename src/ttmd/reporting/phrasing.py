@@ -32,6 +32,13 @@ def describe_edge(edge: dict, cross_source: bool = False) -> str:
     strength = strength_word(edge["dcor"])
     kind = kind_phrase(edge["kind"])
     note = ""
+    # common-driver haze: strong marginally, but explained away by other signals
+    if edge.get("direct") is False:
+        return (f"{a} and {b} appear {strength} related "
+                f"(dependence {edge['dcor']:.2f}), but this looks INDIRECT — mostly "
+                f"explained by other signals (direct link only "
+                f"{edge.get('partial', 0):.2f} after accounting for them)."
+                + (" [cross-source]" if cross_source else ""))
     if edge["kind"] == "nonlinear" and edge["pearson"] < 0.2:
         note = (" — notably, ordinary correlation would miss this "
                 f"(linear score only {edge['pearson']:.2f})")

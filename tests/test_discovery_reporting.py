@@ -120,3 +120,43 @@ def test_label_sequence_time_ordered(has_data):
     assert (times[1:] >= times[:-1]).all()       # chronological
     # every label is a valid regime index
     assert set(labels.tolist()).issubset(set(range(len(model["centers"]))))
+
+
+# ---------------- partial / conditional dependence ----------------
+def test_partial_correlation_prunes_common_driver():
+    """A common driver C->A, C->B makes A~B strong marginally but its PARTIAL
+    correlation collapses -> flagged as induced (direct=False)."""
+    from ttmd.discovery.dependence import pairwise_dependence
+    rng = np.random.default_rng(0)
+    C = rng.normal(size=4000)
+    A = C + rng.normal(0, 0.3, size=4000)
+    B = C + rng.normal(0, 0.3, size=4000)
+    D = rng.normal(size=4000)
+    data = np.column_stack([A, B, C, D])
+    res = {(r.a, r.b): r for r in pairwise_dependence(["A", "B", "C", "D"], data,
+                                                      with_mi=False)}
+    ab = res[("A", "B")]
+    assert ab.pearson > 0.8 and ab.partial < 0.2 and ab.direct is False   # induced
+    ac = res[("A", "C")]
+    assert ac.partial > 0.3 and ac.direct is True                          # real link
+
+
+def test_partial_correlation_matrix_shape_and_none():
+    from ttmd.discovery.dependence import partial_correlation_matrix
+    rng = np.random.default_rng(1)
+    data = rng.normal(size=(500, 4))
+    m = partial_correlation_matrix(data)
+    assert m is not None and m.shape == (4, 4)
+    assert (m >= 0).all() and (m <= 1).all()
+    # too few columns / rows -> None
+    assert partial_correlation_matrix(rng.normal(size=(500, 2))) is None
+    assert partial_correlation_matrix(rng.normal(size=(3, 5))) is None
+
+
+def test_induced_edge_phrasing():
+    """An induced edge is described as INDIRECT, not a direct relationship."""
+    from ttmd.reporting import phrasing as ph
+    edge = {"a": "boost_pressure", "b": "oil_pressure", "dcor": 0.8,
+            "pearson": 0.81, "kind": "linear", "direct": False, "partial": 0.004}
+    txt = ph.describe_edge(edge, False)
+    assert "INDIRECT" in txt and "boost" in txt.lower()

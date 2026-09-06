@@ -36,7 +36,7 @@ def _edge_facts(graphs: dict) -> list[dict]:
     edges.sort(key=lambda e: e["dcor"], reverse=True)
     out = []
     for e in edges:
-        out.append({
+        fact = {
             "a": ph._pretty(e["a"]),
             "b": ph._pretty(e["b"]),
             "dcor": e["dcor"],
@@ -44,7 +44,12 @@ def _edge_facts(graphs: dict) -> list[dict]:
             "kind": e["kind"],
             "strength": ph.strength_word(e["dcor"]),
             "fact": ph.describe_edge(e, _cross(e)),
-        })
+        }
+        # partial-correlation refinement (direct link vs common-driver haze)
+        if e.get("direct") is not None:
+            fact["direct"] = e["direct"]
+            fact["partial"] = e.get("partial")
+        out.append(fact)
     return out
 
 

@@ -237,6 +237,10 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
 
 - Distance correlation uses the fast O(n log n) algorithm (`dcor`), ~100x faster
   than naive, identical results. See `src/ttmd/discovery/README.md`.
+- **Direct vs indirect links:** partial correlation (controlling for all other
+  signals) flags edges that are strong only because of a shared driver (e.g. two
+  pressures that both track engine load), so the report separates a real
+  relationship from common-driver haze.
 - **Three anomaly detectors, all built:** (1) *relational drift* — `ttmd baseline`
   then `ttmd detect`, or ask "has anything drifted" — flags within-mode
   relationship-structure change (possible fault) + regime events (usage change) +
