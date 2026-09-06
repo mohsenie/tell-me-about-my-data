@@ -1,0 +1,18 @@
+# Coverage config. Omit non-functional-testable surfaces:
+#  - cli.py: argparse wiring / entry point (exercised via the actual CLI, not units)
+#  - io/parquet_reader.py: alternate reader not on the query path
+#  - constants.py, __init__.py: trivial
+[run]
+source = src/ttmd
+omit =
+    src/ttmd/cli.py
+    src/ttmd/io/parquet_reader.py
+    src/ttmd/constants.py
+    */__init__.py
+
+[report]
+skip_covered = False
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
