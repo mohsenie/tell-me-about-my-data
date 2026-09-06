@@ -1,0 +1,556 @@
+"""Chat orchestrator — the single conversational surface.
+
+Each user turn:
+  1. scope-gate (refuse off-domain),
+  2. classify intent (LLM),
+  3. check PREREQUISITES for that intent; if missing, tell the user clearly and
+     offer to run the missing phase,
+  4. resolve parameters (signals via field-semantics, window) — data-driven,
+  5. dispatch to a deterministic function or LLM reasoning,
+  6. reply, keep history.
+
+The LLM routes + interprets + resolves; deterministic code computes. No hardcoded
+signal names — "fuel"/"rpm" are resolved from the data + field semantics.
+"""
+from __future__ import annotations
+
+import json
+
+from .provider import LLMProvider
+from .knowledge import KnowledgeBase
+from .scope import check_scope, REFUSAL
+from .resolve import resolve_signal, resolve_aggregation
+
+
+INTENTS = ["capabilities", "describe_fields", "value", "trend", "plot",
+           "relationship", "reasoning", "correction", "position", "nearby",
+           "voyage", "efficiency", "distance", "between", "geo", "anomaly",
+           "summarize", "regimes", "smalltalk"]
+
+
+class _NeedsClarification(Exception):
+    """Raised by a capability when a term is ambiguous; carries the question."""
+    def __init__(self, question):
+        super().__init__(question)
+        self.question = question
+
+
+_INTENT_INSTRUCTION = "You classify user messages for an asset-telemetry assistant."
+_PARAM_INSTRUCTION = "You extract structured query parameters as JSON."
+
+_INTENT_SYSTEM = """Classify the user's message about asset telemetry into ONE
+intent label (reply with ONLY the label). Read carefully — a signal NAME appearing
+does NOT make it a relationship question.
+
+- capabilities: what fields/signals exist, what they can query/ask, or general
+    "help" / "what can you do" requests.
+- describe_fields: asking what the fields MEAN — their definitions/units. e.g.
+    "what do the fields mean?", "what does X measure?", "what units is X in?".
+    (Merely asking WHICH fields EXIST is capabilities, not describe_fields.) NOT
+    when the user wants an actual NUMBER for a specific signal (that is value),
+    even if they use the word "normal"/"typical".
+- value: wants a NUMBER for a specific signal — total/average/max/min, OR the
+    typical/normal/current level of a NAMED signal. e.g. "average fuel rate over 2
+    days", "max coolant temp", "total fuel last week", "what's the normal/typical
+    frequency_x", "current engine speed". If a specific signal is named and a
+    quantity (even "normal"/"typical"/"usual" value) is asked for, it's value, not
+    describe_fields. A plain time window ("over/for the past N days") is STILL
+    value — one number for that window. Default aggregation is the mean.
+- trend: asking whether/how a signal CHANGED over time — "has X gone up/down?",
+    "is X higher than before?", "how has X changed since ...", direction over time.
+- plot: ONLY if they (a) explicitly ask for a chart/graph/plot/visual, OR (b) ask
+    for a SCATTER of two signals ("scatter of X vs Y" is ALWAYS plot, even though a
+    scatter shows a correlation — the word scatter/chart means they want the
+    picture, not the number), OR (c) ask to BUCKET/BIN/GROUP a value by a TIME
+    interval — a VALUE PER TIME INTERVAL, like "average X EVERY 4 hours", "X PER
+    hour", "bucket X hourly", "hourly average". Without an explicit chart word or a
+    per-TIME-interval phrase, it is value, not plot. If the bucketing is per
+    DISTANCE ("every 20km", "per mile") it's efficiency, not plot.
+- relationship: asking what CORRELATES with what / the correlation/link BETWEEN
+    signals. Must be about a relationship between signals, not one signal's value.
+- reasoning: asking WHY signals relate / an explanation or root cause.
+- correction: telling you the real cause/reason for a relationship (disagreeing).
+- position: asking WHERE the asset/ship is now or at some time ("where is the
+    ship", "current position/location", "where was it at ...").
+- nearby: asking what OTHER vessels/objects were near/around at a time ("what
+    ships were nearby at 13:00", "any vessels around us", "who was close").
+- distance: asking HOW FAR the asset travelled / total distance covered over a
+    period — "how many km did the ship travel", "distance travelled last 2 days",
+    "how far did we go". This is the LENGTH OF THE TRACK, not a signal value.
+- geo: asking how a signal VARIES BY LOCATION / whether it differs across places
+    — "is vibration higher in some locations", "how does X vary by location/area/
+    region", "relationship between <signal> and location", "where is it roughest".
+    A signal (or a concept like 'vibration' = all its axes) aggregated over
+    geographic areas. The tell is 'by location/area/region/where' or '<signal> and
+    location'. NOT a per-distance metric (that's efficiency).
+- between: asking the DISTANCE BETWEEN TWO NAMED OTHER entities/vessels at a time
+    — "distance between JORO and HARRIS", "how far apart were X and Y at 15:00".
+    Two named vessels + "between/apart". NOT a signal correlation (that's
+    relationship), NOT proximity to us (that's nearby).
+- efficiency: asking for "X PER Y" where Y is a DISTANCE or another QUANTITY
+    (not time). Covers: (a) consumption per distance — "fuel per km", "litres per
+    20km", "fuel economy"; (b) any signal averaged per distance — "velocity_z per
+    10km", "plot vibration every 10km"; (c) a ratio per another quantity — "fuel
+    per operating hour", "fuel per MWh", "X per revolution". The defining feature
+    is "per <distance-or-quantity>"/"every <distance>", INCLUDING when a chart is
+    requested. If the bucketing is per <TIME> (per hour / every 4 hours) it's
+    plot/trend, NOT efficiency.
+- regimes: asking about the OPERATING MODES / usage patterns the asset runs in —
+    "list usage patterns", "what operating modes are there", "what regimes",
+    "how does the engine operate", "what states does it run in", "usage
+    breakdown". Wants the discovered operating regimes + how much time in each,
+    NOT the list of fields (capabilities) and NOT a per-signal value.
+- summarize: an OPEN-ENDED overview request — "what is notable", "summarize my
+    data", "what should I pay attention to", "give me an overview", "anything
+    interesting", "what stands out". Wants a short prioritized summary of the
+    whole picture, NOT a single metric and NOT a specific drift check. (If they
+    ask specifically "has X drifted / is it normal", that's anomaly, not this.)
+- anomaly: asking whether anything has DRIFTED / changed / is abnormal / wrong /
+    degrading vs normal — "has anything changed?", "is the engine behaving
+    normally?", "any anomalies?", "check for drift", "what's different from the
+    baseline?". About deviation from normal, not a single value or a correlation.
+- voyage: asking HOW MUCH of a quantity was CONSUMED/USED going between two
+    points — a single total for the trip. e.g. "how much fuel from A to B", "fuel
+    used going from <lat,lon> to <lat,lon>". Defining features: (a) a FROM and a
+    TO, AND (b) a consumed TOTAL ("how much ... used/consumed"). If the user asks
+    to PLOT/BUCKET a signal between two points (a chart, not a single total),
+    that is plot — the from/to just restrict the window, it's not a voyage total.
+- smalltalk: greetings or meta questions about the assistant itself.
+
+If the request is genuinely ambiguous between two intents (e.g. you cannot tell
+if they want a single number vs a chart, or a value vs a correlation), reply with
+"ambiguous" instead of guessing.
+
+Ongoing conversation:
+{history}
+Message: {message}
+Intent:"""
+
+MODES = ("operator", "technician", "analyst")
+
+
+def _norm_mode(m):
+    """Normalize a mode name/synonym to one of MODES. Default: analyst."""
+    m = (m or "").strip().lower()
+    alias = {"business": "operator", "operations": "operator", "ops": "operator",
+             "manager": "operator", "captain": "operator", "exec": "operator",
+             "tech": "technician", "engineer": "technician", "maintenance": "technician",
+             "mechanic": "technician",
+             "data": "analyst", "analysis": "analyst", "detailed": "analyst",
+             "expert": "analyst", "raw": "analyst"}
+    if m in MODES:
+        return m
+    return alias.get(m, "analyst")
+
+
+def _detect_mode_switch(message):
+    """If the message asks to switch presentation mode ('switch to business mode',
+    'use technician view', 'operator mode'), return the new mode, else None."""
+    low = (message or "").lower()
+    if not any(w in low for w in ("mode", "view", "as a", "for a", "switch",
+                                  "talk to me", "explain")):
+        return None
+    import re as _re
+    for token in _re.findall(r"[a-z]+", low):
+        m = _norm_mode(token)
+        # only accept if the token itself was a known mode/alias (not the default
+        # fallback firing on an unrelated word)
+        if token in MODES or token in {"business", "operations", "ops", "manager",
+                                       "captain", "exec", "tech", "engineer",
+                                       "maintenance", "mechanic", "data", "analysis",
+                                       "detailed", "expert", "raw"}:
+            return m
+    return None
+
+
+_MODE_PERSONA = {
+    "operator": (
+        "a BUSINESS/OPERATIONS user who does NOT know sensor/statistics jargon. "
+        "Be SHORT (1-3 sentences). Translate technical findings into operational "
+        "meaning: an operating-mode/regime change -> how the asset is being USED "
+        "(e.g. 'spending more time stationary', 'taking a route it hasn't before', "
+        "'staying in one place longer than usual'); a relationship/structure drift "
+        "-> 'something in how it's behaving changed, worth a look'. NEVER use the "
+        "words regime, dcor, correlation, edge, coefficient, threshold. Lead with "
+        "whether there's anything to worry about."),
+    "technician": (
+        "a TECHNICIAN/ENGINEER. Be concise but concrete: name the specific signals "
+        "and couplings that changed and in which operating mode, and suggest what "
+        "to CHECK. Keep the actionable detail, drop raw statistics tables."),
+}
+_FRAME_SYSTEM = (
+    "You are continuing a CONVERSATION with {persona}\n"
+    "You are given the recent conversation and a fresh analyst answer. Re-express "
+    "the answer for this person AS THE NEXT TURN in the conversation.\n"
+    "STRICT RULES:\n"
+    "- Use ONLY the facts in the analyst answer — never add, invent, or change a "
+    "number, signal, or finding. Rewording for the audience, not re-analyzing.\n"
+    "- ANSWER THE SPECIFIC QUESTION asked. If they asked about fuel, lead with the "
+    "fuel-relevant part; if about the engine's health, the engine part. Don't dump "
+    "the whole picture when they asked something narrow.\n"
+    "- DON'T REPEAT what you already told them earlier in the conversation. If a "
+    "fact (e.g. the long stop) was already stated, refer to it briefly ('as noted, "
+    "the extended stop...') or omit it — do NOT restate it in full each time.\n"
+    "- Sound like a continuing dialogue, not a fresh standalone report. Be concise.\n"
+    "- Keep the 'observed change, not a stated cause' honesty. If the answer is "
+    "already a simple number/value, return it unchanged.")
+_FRAME_USER = ("Recent conversation:\n{history}\n\nUser's new question: {question}\n\n"
+               "Fresh analyst answer to re-express (for THIS question, without "
+               "repeating what was already said):\n{answer}\n\nYour reply:")
+
+_CLARIFY_SYSTEM = "You write ONE short clarifying question for a telemetry assistant."
+_CLARIFY_USER = """The user's request is ambiguous: "{message}"
+Ask ONE short question to disambiguate what they want (e.g. a single value vs a
+chart over time, or which of two signals). One sentence, no preamble."""
+
+_PARAM_SYSTEM = """Extract query parameters from the user's request as JSON.
+Available signals: {signals}
+Return ONLY JSON with keys:
+  "signal": best-matching signal for the main quantity (or ""),
+  "signal_x","signal_y": for a scatter/correlation of two signals (or ""),
+  "aggregation": one of avg/min/max/sum/median/integral (or ""),
+  "bucket": time bin like "1h","4h","1d" for trends (or ""),
+  "days": integer number of days back if stated (or null),
+  "plot_kind": "trend" or "scatter" if a plot (or ""),
+  "from_lat","from_lon": start-point coordinates for a voyage, as numbers, if the
+      user gave coordinates (else null),
+  "to_lat","to_lon": end-point coordinates for a voyage, as numbers, if given
+      (else null),
+  "from_place","to_place": start/end PLACE NAMES for a voyage if the user named
+      places instead of coordinates (e.g. "Gdynia", "Scotland"), else "".
+  "per_distance_km": for an efficiency question ("per 20km", "per mile"), the
+      distance in KILOMETRES as a number (per km -> 1; per 20km -> 20; per mile ->
+      1.60934; per nautical mile -> 1.852), else null.
+  "per_distance_label": the distance unit as the USER said it, for display
+      ("20km" -> "20 km"; "mile" -> "mile"; "nautical mile" -> "nautical mile"),
+      else "".
+  "per_signal": for an "X per Y" ratio where Y is a SIGNAL/quantity that is NOT a
+      distance (e.g. "fuel per operating hour" -> "operating hour"; "fuel per MWh"
+      -> "MWh"; "X per revolution" -> "revolution"). Empty "" if the denominator
+      is distance or there is no per-Y.
+Message: {message}"""
+
+
+class Orchestrator:
+    """Holds conversation state + injected capability callbacks so it stays
+    testable and decoupled from the CLI."""
+
+    def __init__(self, source: str, asset_type: str, provider: LLMProvider,
+                 kb: KnowledgeBase, deps, mode: str = "analyst"):
+        self.source = source      # default/home source the chat started on
+        self._active = source     # source used for the CURRENT turn (routing)
+        self.asset_type = asset_type
+        self.provider = provider
+        self.kb = kb
+        self.deps = deps          # capability object (see CLI wiring)
+        self.mode = _norm_mode(mode)  # presentation mode (operator/technician/analyst)
+        self.history: list[dict] = []
+        self._described_attempted = set()  # sources we've auto-described (once each)
+        self._clarifying = None   # original message awaiting a disambiguation reply
+
+    def _hist(self) -> str:
+        return "\n".join(f"{h['role']}: {h['text']}" for h in self.history[-6:])
+
+    # quantity words that signal "give me a NUMBER" (not a field-meaning request).
+    # NOTE: "mean" is deliberately excluded — it's overloaded ("what does X mean")
+    # and "average"/"avg" cover the statistical sense.
+    _VALUE_WORDS = ("average", "avg", "maximum", "minimum", "total", "median",
+                    "normal", "typical", "usual", "current", "how much",
+                    "how many", "reading", "readings", "max", "min", "sum")
+
+    def _looks_like_value(self, message: str) -> bool:
+        """True if the message NAMES an exact signal column AND asks for a
+        quantity — a deterministic 'this is a value request' signal used to
+        override a borderline LLM intent. Column names come from the data (all
+        sources), so nothing is hardcoded to a specific signal."""
+        import re as _re
+        low = (message or "").lower()
+        # whole-word match so "mean"/"min" don't match inside other words
+        if not any(_re.search(rf"\b{_re.escape(w)}\b", low) for w in self._VALUE_WORDS):
+            return False
+        try:
+            for s in self.deps.all_sources():
+                for col in self.deps.signals(s):
+                    if col.lower() in low:      # exact column name mentioned
+                        return True
+        except Exception:
+            pass
+        return False
+
+    def send(self, message: str) -> str:
+        # Presentation-mode switch ("switch to business mode") — handled before
+        # anything else; changes ONLY how answers are framed, never the data.
+        sw = _detect_mode_switch(message)
+        if sw and sw != self.mode:
+            self.mode = sw
+            reply = (f"Switched to {sw} mode — I'll tailor how I explain things "
+                     f"({'short, plain, business-focused' if sw == 'operator' else 'component/action-focused' if sw == 'technician' else 'full detail with the numbers'}). The underlying analysis is unchanged.")
+            self.history.append({"role": "user", "text": message})
+            self.history.append({"role": "assistant", "text": reply})
+            return reply
+
+        if not check_scope(message, self.provider, context=self._hist() or None).in_scope:
+            return REFUSAL
+
+        raw_intent = self.provider.complete(
+            _INTENT_INSTRUCTION,
+            _INTENT_SYSTEM.format(history=self._hist() or "(none)",
+                                  message=message)).strip().lower()
+
+        # Ambiguous -> ask a clarifying question instead of guessing. Remember the
+        # original message so the user's next reply is interpreted with it.
+        if "ambiguous" in raw_intent and not any(
+                i in raw_intent for i in INTENTS if i != "smalltalk"):
+            q = self.provider.complete(
+                _CLARIFY_SYSTEM, _CLARIFY_USER.format(message=message)).strip()
+            self._clarifying = message
+            self.history.append({"role": "user", "text": message})
+            self.history.append({"role": "assistant", "text": q})
+            return q
+
+        intent = next((i for i in INTENTS if i in raw_intent), "reasoning")
+
+        # DETERMINISTIC GUARD: the value/describe_fields boundary on phrasing like
+        # "normal frequency_x" is genuinely borderline and the LLM flips between
+        # runs. If the message NAMES an exact signal column AND asks for a
+        # quantity, it's a value request — override a describe_fields/reasoning
+        # guess. Data-driven: checks the actual column names, nothing hardcoded.
+        if intent in ("describe_fields", "reasoning") and self._looks_like_value(message):
+            intent = "value"
+
+        # DETERMINISTIC GUARD: an explicit chart word means a chart, never a
+        # relationship/reasoning TEXT answer ("scatter of X vs Y" flips otherwise).
+        # Leave per-distance charts (efficiency) alone; only rescue relationship/
+        # reasoning -> plot.
+        _low = message.lower()
+        if (intent in ("relationship", "reasoning")
+                and any(w in _low for w in ("scatter", "plot", "graph", "chart",
+                                            "draw", "visual"))):
+            intent = "plot"
+
+        # If we just asked a clarifying question, the user's reply is the
+        # disambiguation. Prepend it so it takes PRIORITY (e.g. reply
+        # "EngineFuelRate" overrides the ambiguous "fuel" in the original).
+        if getattr(self, "_clarifying", None):
+            message = f"{message} (for: {self._clarifying})"
+            self._clarifying = None
+
+        # VESSEL-SCOPED ROUTING: pick the source that can answer this question
+        # rather than staying locked to the source the chat started on. For
+        # value/plot/trend we peek at params (which signal) to find the source
+        # that actually has that signal.
+        params = None
+        if intent in ("value", "plot", "trend", "voyage", "efficiency", "distance",
+                      "geo"):
+            params = self._extract_params(message)
+        self._active = self.deps.route_source(
+            intent, message, params or {}, self.source)
+
+        try:
+            reply = self._dispatch(intent, message, params)
+        except _NeedsClarification as e:
+            # deterministic signal-ambiguity -> ask, remember the original request
+            self._clarifying = message
+            self.history.append({"role": "user", "text": message})
+            self.history.append({"role": "assistant", "text": e.question})
+            return e.question
+        # PRESENTATION MODE: reframe INTERPRETIVE answers for the audience
+        # (operator/technician). Analyst = unchanged. Never alters the numbers.
+        reply = self._frame(intent, message, reply)
+        self.history.append({"role": "user", "text": message})
+        self.history.append({"role": "assistant", "text": reply})
+        return reply
+
+    # intents whose answers EXPLAIN (worth reframing per audience). Deterministic
+    # value/plot/etc. are the same in every mode, so they're left untouched.
+    _INTERPRETIVE = ("summarize", "anomaly", "regimes", "reasoning", "relationship")
+
+    def _frame(self, intent, message, reply):
+        """Reframe an interpretive answer for the current mode. operator = short,
+        plain, business/behavior wording (no jargon like regime/dcor/edge);
+        technician = which signals/couplings + likely component/action; analyst =
+        unchanged. Presentation only — the input facts/numbers are not altered,
+        the LLM just re-expresses them for the audience."""
+        if self.mode == "analyst" or intent not in self._INTERPRETIVE:
+            return reply
+        if not reply or reply.strip().startswith("I don't have a known-good"):
+            return reply   # don't reframe the baseline-setup prompt
+        persona = _MODE_PERSONA[self.mode]
+        try:
+            out = self.provider.complete(
+                _FRAME_SYSTEM.format(persona=persona),
+                _FRAME_USER.format(history=self._hist() or "(start of conversation)",
+                                   question=message, answer=reply),
+                max_tokens=500).strip()
+            return out or reply
+        except Exception:
+            return reply
+
+    # --- dispatch with prerequisite checks ---
+    def _dispatch(self, intent: str, message: str, params: dict | None = None) -> str:
+        d = self.deps
+        src = self._active   # routed source for this turn (may differ from home)
+        if intent == "capabilities":
+            return d.capabilities(src)
+
+        if intent == "describe_fields":
+            notice = ""
+            if not d.has_field_semantics(src):
+                # auto-run: the user asked for field meanings, so just produce them
+                notice = self._auto_describe_fields(src)
+            return notice + d.field_descriptions(src)
+
+        if intent in ("relationship", "reasoning", "correction"):
+            # correction doesn't need discovery; relationship/reasoning do -> auto-run
+            notice = ""
+            if intent != "correction" and not d.has_discovery(src):
+                notice = self._auto_discover(src)
+            if intent == "relationship":
+                return notice + d.relationship_lookup(src, message)
+            if intent == "correction":
+                return d.capture_correction(src, message)
+            return notice + d.reason(src, message, self.history)
+
+        if intent in ("position", "nearby", "between"):
+            # Spatial queries resolve columns by ROLE (lat/lon/identifier/name)
+            # from field-semantics. Auto-describe this source's fields once so the
+            # roles exist — makes it fully data-agnostic (no reliance on column
+            # NAME conventions). Falls back to name hints if description fails.
+            notice = ""
+            if (not d.has_field_semantics(src)
+                    and src not in self._described_attempted):
+                self._described_attempted.add(src)
+                notice = self._auto_describe_fields(src)
+            if intent == "position":
+                return notice + d.position(src, message)
+            if intent == "between":
+                return notice + d.distance_between(src, message)
+            return notice + d.nearby(src, message)
+
+        if intent == "voyage":
+            # A voyage query spans sources: the WINDOW comes from the position
+            # track, the QUANTITY (fuel/consumption) is integrated on the source
+            # that owns that signal (src, routed by signal ownership). Auto-
+            # describe so the rate's unit/aggregation are known.
+            notice = ""
+            if (not d.has_field_semantics(src)
+                    and src not in self._described_attempted):
+                self._described_attempted.add(src)
+                notice = self._auto_describe_fields(src)
+            if params is None:
+                params = self._extract_params(message)
+            return notice + d.voyage(src, message, params)
+
+        if intent == "efficiency":
+            # consumption per distance: rate integral / track distance. Needs
+            # field-semantics for the rate + a position source for distance.
+            notice = ""
+            if (not d.has_field_semantics(src)
+                    and src not in self._described_attempted):
+                self._described_attempted.add(src)
+                notice = self._auto_describe_fields(src)
+            if params is None:
+                params = self._extract_params(message)
+            # "X per Y" where Y is another SIGNAL (not distance) -> general ratio;
+            # otherwise the per-distance path (value or chart).
+            if (params.get("per_signal") or "").strip():
+                return notice + d.per_ratio(src, message, params)
+            return notice + d.efficiency(src, message, params)
+
+        if intent == "distance":
+            if params is None:
+                params = self._extract_params(message)
+            return d.distance_travelled(src, message, params)
+
+        if intent == "geo":
+            # signal-by-location. Concept resolution ("vibration" = its axes) needs
+            # field-semantics, so auto-describe the source once.
+            notice = ""
+            if (not d.has_field_semantics(src)
+                    and src not in self._described_attempted):
+                self._described_attempted.add(src)
+                notice = self._auto_describe_fields(src)
+            if params is None:
+                params = self._extract_params(message)
+            return notice + d.signal_by_location(src, message, params)
+
+        if intent == "anomaly":
+            # Drift detection needs a KNOWN-GOOD baseline, which only the operator
+            # can designate (which period was healthy). So unlike discovery, we
+            # can't auto-run it — we ask for the window if none is set.
+            return d.detect_anomaly(src, message)
+
+        if intent == "summarize":
+            # Open-ended overview. Auto-runs discovery inside _notable_facts;
+            # folds in drift only if a baseline exists. No baseline required.
+            notice = ""
+            if (not d.has_field_semantics(src)
+                    and src not in self._described_attempted):
+                self._described_attempted.add(src)
+                notice = self._auto_describe_fields(src)
+            return notice + d.summarize(src, message)
+
+        if intent == "regimes":
+            # Operating modes come from discovery -> auto-run it if missing.
+            notice = ""
+            if not d.has_discovery(src):
+                notice = self._auto_discover(src)
+            return notice + d.describe_regimes(src, message)
+
+        if intent in ("value", "plot", "trend"):
+            # Auto-describe fields once (so values carry UNITS and the correct
+            # aggregation, e.g. rate -> integral). Runs inline, no confirmation.
+            notice = ""
+            if (not d.has_field_semantics(src)
+                    and src not in self._described_attempted):
+                self._described_attempted.add(src)
+                notice = self._auto_describe_fields(src)
+            if params is None:
+                params = self._extract_params(message)
+            if intent == "value":
+                return notice + d.compute_value(src, message, params)
+            if intent == "trend":
+                return notice + d.compare_trend(src, message, params)
+            return notice + d.make_plot(src, message, params)
+
+        # smalltalk / fallback
+        return ("I analyze this asset's telemetry — ask about fields, values, "
+                "plots, correlations, or why signals relate.")
+
+    # --- auto-run prerequisite phases (no confirmation; inline notice) ---
+    def _auto_discover(self, src: str) -> str:
+        """Run discovery for `src` right now and return a short notice to prepend
+        to the answer. The question that triggered this needs the relationship
+        graph, so we just build it rather than asking permission."""
+        self.deps.run_discovery(src)
+        return f"(first analyzed '{src}' to find its relationships)\n\n"
+
+    def _auto_describe_fields(self, src: str) -> str:
+        """Describe fields for `src` inline so values carry units/aggregation.
+        Returns a short notice (or a soft note if it couldn't run) to prepend."""
+        try:
+            msg = self.deps.run_describe_fields(src)
+        except Exception:
+            return ""   # never block the actual answer on field description
+        return f"({msg})\n\n"
+
+    def _extract_params(self, message: str) -> dict:
+        # Use signals across ALL sources so a term can be extracted regardless of
+        # which source ends up answering (vessel-scoped routing decides that next).
+        available = []
+        try:
+            for s in self.deps.all_sources():
+                for sig in self.deps.signals(s):
+                    if sig not in available:
+                        available.append(sig)
+        except Exception:
+            available = self.deps.signals(self.source)
+        raw = self.provider.complete(
+            _PARAM_INSTRUCTION,
+            _PARAM_SYSTEM.format(signals=", ".join(available), message=message))
+        try:
+            import re
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            return json.loads(m.group(0)) if m else {}
+        except Exception:
+            return {}
