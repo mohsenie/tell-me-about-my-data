@@ -20,11 +20,12 @@ import numpy as np
 
 import config
 from ttmd.discovery.loader import load_numeric, load_numeric_with_time
-from ttmd.discovery.regimes import label_sequence
+from ttmd.discovery.regimes import label_sequence, assign_labels
 from ttmd.discovery.relationships import (
-    build_per_regime_graphs, graphs_for_fixed_regimes)
+    build_per_regime_graphs, graphs_for_fixed_regimes, clean_frame)
 from .baseline import _fingerprint, _fingerprint_from_fixed, _edge_key
 from .transitions import detect_transition_anomalies
+from .joint import detect_joint
 
 
 # how many multiples of the normal-variation band counts as a flag
@@ -197,6 +198,12 @@ def detect_drift(source: str, dates: list[str], vessel: str,
             trans = _window_transition_anomalies(globs, model, base_tm)
             if trans is not None:
                 out["layer2_transition_events"] = trans
+        # Joint (Mahalanobis) detector: points jointly unusual for their mode.
+        base_env = baseline.get("joint_envelopes")
+        if base_env is not None:
+            joint = _window_joint_anomalies(cols, data, model, base_env)
+            if joint is not None:
+                out["joint_anomalies"] = joint
         return out
 
     # legacy path: re-cluster + centroid match (baselines built before model reuse)
@@ -225,6 +232,16 @@ def _window_transition_anomalies(globs, model, base_tm: dict) -> dict | None:
     if labels.size == 0:
         return None
     return detect_transition_anomalies(labels, base_tm)
+
+
+def _window_joint_anomalies(cols, data, model, base_env: dict) -> dict | None:
+    """Score the new window against the per-regime covariance envelopes. Uses
+    cleaned rows assigned to the fixed regime model."""
+    ccols, clean = clean_frame(cols, data)
+    if not ccols or len(clean) == 0:
+        return None
+    labels = assign_labels(model, ccols, clean)
+    return detect_joint(model, ccols, clean, labels, base_env)
 
 
 def _exists(glob_str: str) -> bool:

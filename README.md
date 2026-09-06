@@ -237,19 +237,22 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
 
 - Distance correlation uses the fast O(n log n) algorithm (`dcor`), ~100x faster
   than naive, identical results. See `src/ttmd/discovery/README.md`.
-- **Two anomaly detectors, both built:** (1) *relational drift* — `ttmd baseline`
+- **Three anomaly detectors, all built:** (1) *relational drift* — `ttmd baseline`
   then `ttmd detect`, or ask "has anything drifted" — flags within-mode
   relationship-structure change (possible fault) + regime events (usage change) +
   regime-transition/sequencing change (the order operating modes occur in — a
   usual step missing or a new jump appearing), vs a known-good baseline;
   (2) *behavioral norm* — flags how the asset is
   OPERATED vs its own history (e.g. dwell-time: "stayed somewhere ~37x longer than
-  usual"), no baseline needed. Both report the observed change, never the cause.
+  usual"), no baseline needed; (3) *joint multivariate* — per-regime Mahalanobis
+  covariance envelope that flags points whose COMBINATION of readings is unusual
+  for their mode (even when each signal alone is in range), attributing the score
+  to the signals that drove it. All report the observed change, never the cause.
 - **Scales to a month+ with no changes** (measured): query ops stay sub-second to
   ~1s on ~14M rows/source; discovery is flat (row-capped sampling); the only cost
   that grows with calendar length is baseline-building (per-day loop). See
-  `TODO.md` for remaining hardening (geocoding place names, joint/Mahalanobis
-  detector).
+  `TODO.md` for remaining hardening (geocoding place names, optional autoencoder
+  backend for the joint detector).
 - **Ask "why?"** after an anomaly answer and it EXPLAINS the detected change —
   grounded in the structured findings (which couplings/steps moved), your
   expert-confirmed facts, and manual excerpts — offering what to check, never

@@ -220,3 +220,74 @@ def test_multiscale_drift_endtoend(has_data):
     assert res["periods"][0]["step_distance"] is None          # first has no prev
     assert res["periods"][0]["cumulative_distance"] == 0.0     # vs itself
     assert "pattern" in res["classification"]
+
+
+# ---------------- joint (Mahalanobis) detector ----------------
+def test_fit_envelope_and_self_scores_low():
+    """An envelope fit on data flags ~0.1% of that same data (empirical tail)."""
+    import numpy as np
+    from ttmd.anomaly import fit_envelope, mahalanobis
+    rng = np.random.default_rng(0)
+    cov = np.array([[1, 0.8, 0.1], [0.8, 1, 0.1], [0.1, 0.1, 1]])
+    X = rng.multivariate_normal([0, 0, 0], cov, size=3000)
+    env = fit_envelope(X)
+    assert env is not None and env["df"] == 3
+    d2 = mahalanobis(X, env)
+    assert (d2 > env["threshold"]).mean() <= 0.01     # self flags very little
+
+
+def test_joint_catches_correlation_breaking_point():
+    """A point with individually-normal values but a JOINTLY impossible combo
+    (breaks a strong correlation) scores far beyond threshold and is attributed
+    to the two signals that broke."""
+    import numpy as np
+    from ttmd.anomaly import fit_envelope, mahalanobis
+    from ttmd.anomaly.joint import per_signal_contribution
+    rng = np.random.default_rng(1)
+    cov = np.array([[1, 0.8, 0.1], [0.8, 1, 0.1], [0.1, 0.1, 1]])
+    X = rng.multivariate_normal([0, 0, 0], cov, size=3000)
+    env = fit_envelope(X)
+    odd = np.array([2.5, -2.5, 0.0])                  # high sA, low sB -> breaks 0.8
+    assert mahalanobis(odd[None, :], env)[0] > env["threshold"]
+    contrib = per_signal_contribution(odd, env, ["sA", "sB", "sC"])
+    top2 = {s for s, _ in contrib[:2]}
+    assert top2 == {"sA", "sB"}                       # not sC
+
+
+def test_monotonic_columns_excluded():
+    """A monotonic counter column is dropped from the envelope (its mean drifts
+    with time by construction, so it must not drive joint flags)."""
+    import numpy as np
+    from ttmd.anomaly.joint import build_joint_envelopes
+    n = 500
+    counter = np.arange(n, dtype=float)               # strictly increasing
+    noise = np.random.default_rng(2).normal(size=n)
+    data = np.column_stack([counter, noise])
+    model = {"columns": ["hours", "sensor"],
+             "scaler_mean": [counter.mean(), 0.0],
+             "scaler_scale": [counter.std() or 1.0, 1.0],
+             "centers": [[0.0, 0.0]]}
+    labels = np.zeros(n, int)
+    env = build_joint_envelopes(model, ["hours", "sensor"], data, labels)
+    assert "hours" not in env["mcolumns"]             # monotonic dropped
+    assert "sensor" in env["mcolumns"]
+
+
+@pytest.mark.slow
+def test_joint_baseline_and_detector_selfconsistency(has_data):
+    """End-to-end: baseline fits per-regime envelopes; a window vs its OWN
+    baseline flags a tiny fraction (self-consistency)."""
+    src = "engine" if "engine" in config.discover_sources() else _first_multiday_source()
+    if not src:
+        pytest.skip("no source")
+    dates = config.available_dates(src)
+    if len(dates) < 2:
+        pytest.skip("need >=2 days")
+    bl = build_baseline(src, dates[:2], config.DEFAULT_VESSEL, with_mi=False)
+    if "joint_envelopes" not in bl:
+        pytest.skip("no envelopes (degenerate)")
+    assert bl["joint_envelopes"]["regimes"]
+    res = detect_drift(src, dates[:2], config.DEFAULT_VESSEL, bl, with_mi=False)
+    ja = res.get("joint_anomalies")
+    assert ja is not None
+    assert ja["overall_flagged_fraction"] <= 0.02     # self-consistent

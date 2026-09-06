@@ -21,10 +21,11 @@ import numpy as np
 
 import config
 from ttmd.discovery.loader import load_numeric, load_numeric_with_time
-from ttmd.discovery.regimes import label_sequence
+from ttmd.discovery.regimes import label_sequence, assign_labels
 from ttmd.discovery.relationships import (
-    build_per_regime_graphs, graphs_for_fixed_regimes)
+    build_per_regime_graphs, graphs_for_fixed_regimes, clean_frame)
 from .transitions import build_transition_matrix
+from .joint import build_joint_envelopes
 
 
 def _baseline_path(source: str) -> Path:
@@ -159,7 +160,21 @@ def build_baseline(source: str, dates: list[str], vessel: str,
         tm = _baseline_transition_matrix(globs, model)
         if tm is not None:
             out["transitions"] = tm
+        # Joint detector: per-regime covariance envelope from the known-good rows.
+        env = _baseline_joint_envelopes(cols, data, model)
+        if env is not None and env.get("regimes"):
+            out["joint_envelopes"] = env
     return out
+
+
+def _baseline_joint_envelopes(cols, data, model) -> dict | None:
+    """Fit per-regime Mahalanobis covariance envelopes from the known-good window.
+    Uses cleaned rows (NaN-free) assigned to the fixed regime model."""
+    ccols, clean = clean_frame(cols, data)
+    if not ccols or len(clean) < 50:
+        return None
+    labels = assign_labels(model, ccols, clean)
+    return build_joint_envelopes(model, ccols, clean, labels)
 
 
 def _baseline_transition_matrix(globs, model) -> dict | None:

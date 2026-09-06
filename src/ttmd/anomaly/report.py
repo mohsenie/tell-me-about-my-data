@@ -20,6 +20,7 @@ def render_drift(result: dict) -> str:
     l1 = result.get("layer1_structure_drift", [])
     l2 = result.get("layer2_regime_events", [])
     lt = result.get("layer2_transition_events")
+    lj = result.get("joint_anomalies")
 
     # Layer 1 — behavioral anomaly (likely fault)
     lines.append("BEHAVIORAL ANOMALY (within-mode relationship drift — possible fault):")
@@ -73,6 +74,25 @@ def render_drift(result: dict) -> str:
                 lines.append(f"    - UNUSUAL step {f['from']} -> {f['to']}: rare in "
                              f"the baseline ({f['baseline_prob']*100:.1f}%), now "
                              f"{f['window_prob']*100:.0f}% of exits from mode {f['from']}.")
+        lines.append("")
+
+    # Joint (Mahalanobis) — points jointly unusual for their operating mode
+    if lj is not None:
+        findings = [f for f in lj.get("findings", []) if f.get("n_flagged", 0) > 0]
+        lines.append("JOINT ANOMALY (points that are unusual for their operating "
+                     "mode as a WHOLE — combinations, not single readings):")
+        overall = lj.get("overall_flagged_fraction", 0.0)
+        if not findings:
+            lines.append("  none — the joint pattern of readings sits inside each "
+                         "mode's normal envelope.")
+        else:
+            for f in findings[:6]:
+                sigs = ", ".join(f"{s['signal']} ({s['share']*100:.0f}%)"
+                                 for s in f.get("top_signals", [])[:3])
+                lines.append(f"  - mode {f['regime']}: {f['flagged_fraction']*100:.1f}% "
+                             f"of points unusual (confidence: {f['confidence']})"
+                             + (f"; driven mainly by {sigs}" if sigs else "") + ".")
+            lines.append(f"  overall: {overall*100:.1f}% of points flagged.")
         lines.append("")
 
     lines.append("Note: these are OBSERVED changes in the data. A change can come "

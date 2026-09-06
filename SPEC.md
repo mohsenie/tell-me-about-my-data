@@ -376,7 +376,23 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   expert-confirmed asset facts, field-semantic signal meanings, and manual
   excerpts (keyword doc search on the changed signals). The prompt forbids
   asserting a cause — it offers directions to CHECK and cites manual facts.
-  Remaining extensions (see TODO.md): the joint (Mahalanobis) multivariate detector.
+- **Joint multivariate detector (per-regime Mahalanobis / covariance envelope)** —
+  the THIRD detector, catching points whose COMBINATION of readings is unusual for
+  their mode even when every single signal is in range and no pairwise correlation
+  moved (the gap a pairwise method can't see). Per regime, from the known-good
+  window, fit mean + regularized covariance in the model's scaled space (anomaly/
+  joint.py). Score a new row by squared Mahalanobis distance; flag beyond a
+  threshold = max(chi-square(0.999, df), empirical p99.9 of the training distances)
+  — the empirical calibration makes a window vs its own baseline self-consistent
+  (~0.1%) even on non-Gaussian data. EXPLAINABLE: the distance decomposes into
+  per-signal contributions, so findings name WHICH signals drove the score.
+  Monotonic counters / cumulatives are auto-excluded (their mean drifts with time
+  by construction — data-driven test, no hardcoded names). Training-free,
+  deterministic, light numpy. Persisted in the baseline (`joint_envelopes`),
+  surfaced as `joint_anomalies` in the drift result, rendered as "JOINT ANOMALY",
+  folded into summarize/reasoning/explain. Observed deviation, never cause.
+  Remaining extension (see TODO.md): an optional autoencoder backend for strongly
+  nonlinear normal manifolds.
 - **Efficiency / consumption-per-distance (cross-source)**: "average fuel
   consumption per 20km / per mile / per nautical mile" integrates the rate over
   the window (litres) and divides by the track distance travelled in that window

@@ -237,14 +237,16 @@ a window's STRUCTURE, not individual points. This track adds a JOINT detector,
 complementary to relational-drift + behavioral-norm. Same per-regime pattern:
 learn from the known-good window per regime, persist, score a new window.
 
-- [ ] **Per-regime Mahalanobis / covariance envelope (do first)**: per regime,
-      store mean + covariance from the known-good window; score each new row by
-      Mahalanobis distance against its regime's envelope; flag points/windows
-      beyond a chi-square threshold. Training-FREE, deterministic, light (numpy),
-      and EXPLAINABLE — Mahalanobis decomposes into per-signal contributions, so
-      we can still say "unusual mainly because of oil-pressure vs speed". Captures
-      the joint distribution (closes most of the higher-order gap) while keeping
-      the system's zero-training / explainable character. Point-level scoring.
+- [x] **Per-regime Mahalanobis / covariance envelope** — DONE. anomaly/joint.py:
+      fit_envelope (mean + ridge-regularized covariance in scaled space; threshold =
+      max(chi2(0.999,df), empirical p99.9) for self-consistency on non-Gaussian
+      data), mahalanobis (row scores), per_signal_contribution (explainability),
+      build_joint_envelopes (per regime; auto-drops monotonic counters/cumulatives
+      via a data-driven monotonicity test), detect_joint (per-mode flagged fraction
+      + top contributing signals). Persisted in baseline as joint_envelopes;
+      detect_drift adds joint_anomalies; render_drift shows "JOINT ANOMALY"; folded
+      into summarize/reasoning/explain facts. Self-consistency verified (~0.1%).
+      Training-free, deterministic, explainable. Point-level scoring. Tested.
 - [ ] **Autoencoder backend (optional, later)**: a per-regime AE (train-on-normal;
       reconstruction error = score) for STRONGLY NONLINEAR normal manifolds the
       covariance model can't capture. Behind a flag; adds a training loop + dep

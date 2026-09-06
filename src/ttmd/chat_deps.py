@@ -1341,6 +1341,12 @@ class ChatDeps:
             findings["sequencing_changes"] = [
                 {"type": f["type"], "from": f["from"], "to": f["to"]}
                 for f in trans["findings"][:5]]
+        joint = result.get("joint_anomalies")
+        if joint and joint.get("overall_flagged_fraction", 0) > 0:
+            findings["joint_anomalies"] = [
+                {"regime": f["regime"], "flagged_fraction": f["flagged_fraction"],
+                 "top_signals": [s["signal"] for s in f.get("top_signals", [])[:3]]}
+                for f in joint.get("findings", []) if f.get("n_flagged", 0) > 0][:4]
         if last.get("behavioral"):
             findings["behavioral"] = last["behavioral"]
         # ground: field semantics (to translate signals), asset facts, docs
@@ -1523,6 +1529,16 @@ class ChatDeps:
                     for f in trans["findings"][:5]
                 ]
                 facts["drift"]["sequencing_confidence"] = trans.get("confidence")
+            # joint (Mahalanobis) anomalies — points jointly unusual for their mode
+            joint = drift.get("joint_anomalies")
+            if joint and joint.get("overall_flagged_fraction", 0) > 0:
+                facts["drift"]["joint_anomalies"] = {
+                    "overall_flagged_fraction": joint["overall_flagged_fraction"],
+                    "by_mode": [
+                        {"regime": f["regime"], "flagged_fraction": f["flagged_fraction"],
+                         "top_signals": f.get("top_signals", [])[:3]}
+                        for f in joint.get("findings", []) if f.get("n_flagged", 0) > 0][:4],
+                }
             # multi-timescale: is the change a SUDDEN break or SLOW drift?
             model = baseline.get("regime_model")
             if model is not None and len(dates) >= 2:

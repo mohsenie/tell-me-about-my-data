@@ -23,6 +23,8 @@ from .transitions import (
     build_transition_matrix, detect_transition_anomalies, runs_from_labels)
 from .timescale import (
     multiscale_drift, fingerprint_distance, group_dates, period_key)
+from .joint import (
+    build_joint_envelopes, detect_joint, fit_envelope, mahalanobis)
 
 __all__ = [
     "build_baseline", "save_baseline", "load_baseline", "has_baseline",
@@ -30,4 +32,5 @@ __all__ = [
     "detect_stops", "dwell_norm", "flag_current_dwell",
     "build_transition_matrix", "detect_transition_anomalies", "runs_from_labels",
     "multiscale_drift", "fingerprint_distance", "group_dates", "period_key",
+    "build_joint_envelopes", "detect_joint", "fit_envelope", "mahalanobis",
 ]
