@@ -1,0 +1,21 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# Generated artifacts (all reproducible from the CLI)
+artifacts/*.json
+artifacts/*.yaml
+artifacts/*.md
+artifacts/*.png
+
+# Test / coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+
+# Large sample data (keep out of git by default; comment to track)
+# ship-data/**/*.parquet

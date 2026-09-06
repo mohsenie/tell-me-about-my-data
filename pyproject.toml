@@ -1,0 +1,26 @@
+[project]
+name = "ttmd"
+version = "0.1.0"
+description = "Talk-to-my-data: agentic natural-language querying over vessel telemetry."
+requires-python = ">=3.10"
+dependencies = [
+    "duckdb>=1.0",
+    "pyarrow>=14",
+    "pandas>=2.0",
+    "pyyaml>=6.0",
+    "numpy>=1.24",
+    "scikit-learn>=1.3",
+    "dcor>=0.6",
+    "pypdf>=4.0",
+    "boto3>=1.34",
+]
+
+[project.scripts]
+ttmd = "ttmd.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
