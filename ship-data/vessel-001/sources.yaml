@@ -1,0 +1,23 @@
+# Source metadata — provided by the USER (customer) at onboarding.
+# Declares what each data source is, so field-semantics can be interpreted with
+# the right protocol context. The customer knows their equipment; the system
+# consumes this. Missing entries -> system falls back to name-only guessing.
+#
+# protocol examples: J1939, "NMEA 0183", AIS, OBD-II, Modbus, custom
+asset_type: ship
+sources:
+  engine:
+    protocol: J1939
+    description: Main engine ECU (Volvo Penta DPX-600)
+  nmea:
+    protocol: NMEA 0183
+    description: Navigation / GPS / weather instruments
+  ais-own:
+    protocol: AIS
+    description: Own-ship AIS transponder (ITU-R M.1371)
+  ais-other:
+    protocol: AIS
+    description: AIS reports received from nearby vessels
+  vibration:
+    protocol: custom
+    description: Engine-mounted vibration sensor (accel + edge FFT features)
