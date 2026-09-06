@@ -19,9 +19,12 @@ Invariants honored:
 from .baseline import build_baseline, save_baseline, load_baseline, has_baseline
 from .detector import detect_drift
 from .behavioral import detect_stops, dwell_norm, flag_current_dwell
+from .transitions import (
+    build_transition_matrix, detect_transition_anomalies, runs_from_labels)
 
 __all__ = [
     "build_baseline", "save_baseline", "load_baseline", "has_baseline",
     "detect_drift",
     "detect_stops", "dwell_norm", "flag_current_dwell",
+    "build_transition_matrix", "detect_transition_anomalies", "runs_from_labels",
 ]

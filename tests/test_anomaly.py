@@ -117,3 +117,54 @@ def test_assign_labels_matches_training(has_data):
     labels = assign_labels(model, cols, clean[:2000])
     assert len(labels) == len(clean[:2000])
     assert set(labels).issubset(set(range(len(model["centers"]))))
+
+
+# ---------------- regime transitions (Layer-2 temporal) ----------------
+def test_runs_from_labels_collapses_consecutive():
+    from ttmd.anomaly import runs_from_labels
+    assert runs_from_labels([0, 0, 0, 1, 1, 2, 2, 2, 0]) == [0, 1, 2, 0]
+    assert runs_from_labels([]) == []
+    assert runs_from_labels([5, 5, 5]) == [5]
+
+
+def test_transition_matrix_and_self_consistency():
+    """A window with the SAME sequence pattern as the baseline flags nothing."""
+    from ttmd.anomaly import build_transition_matrix, detect_transition_anomalies
+    btm = build_transition_matrix([0, 1, 2] * 20, k=3)
+    assert btm["n_transitions"] == 59
+    assert btm["probs"]["0->1"] == 1.0
+    same = detect_transition_anomalies([0, 1, 2] * 5, btm)
+    assert same["findings"] == []
+    assert same["reliable"] is True
+
+
+def test_transition_detects_unseen_and_absent():
+    """A new mode-jump is 'unseen'; usual steps that vanish are 'absent'."""
+    from ttmd.anomaly import build_transition_matrix, detect_transition_anomalies
+    btm = build_transition_matrix([0, 1, 2] * 20, k=3)
+    res = detect_transition_anomalies([0, 2, 0, 2, 0, 2], btm)
+    types = {(f["type"], f["from"], f["to"]) for f in res["findings"]}
+    assert ("unseen_transition", 0, 2) in types
+    assert ("absent_transition", 0, 1) in types
+
+
+@pytest.mark.slow
+def test_baseline_persists_transitions_and_detector_surfaces(has_data):
+    """End-to-end: baseline persists a transition matrix; detect_drift surfaces
+    a layer2_transition_events block on a later window."""
+    src = "engine" if "engine" in config.discover_sources() else _first_multiday_source()
+    if not src:
+        pytest.skip("no source")
+    dates = config.available_dates(src)
+    if len(dates) < 3:
+        pytest.skip("need >=3 days")
+    bl = build_baseline(src, dates[:2], config.DEFAULT_VESSEL, with_mi=False)
+    if "regime_model" not in bl:
+        pytest.skip("degenerate clustering (no model)")
+    assert "transitions" in bl
+    tm = bl["transitions"]
+    assert tm["n_transitions"] >= 0 and "probs" in tm
+    res = detect_drift(src, dates[2:], config.DEFAULT_VESSEL, bl, with_mi=False)
+    te = res.get("layer2_transition_events")
+    assert te is not None
+    assert "findings" in te and "confidence" in te and "reliable" in te

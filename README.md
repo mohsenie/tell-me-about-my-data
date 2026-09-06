@@ -149,8 +149,9 @@ ttmd report engine
 # anomaly detection (no LLM): set a known-good baseline, then flag drift from it
 ttmd baseline engine --from 2026-09-01 --to 2026-09-02   # a period you consider healthy
 ttmd detect  engine --days 2           # compare recent window to the baseline
-#   -> two layers: within-mode relationship drift (possible fault) +
-#      regime events (usage change); reports the change, never asserts the cause
+#   -> layers: within-mode relationship drift (possible fault) + regime events
+#      (usage change) + SEQUENCING change (the order modes occur in — new/missing
+#      steps); reports the change, never asserts the cause
 
 # querying / plotting (deterministic, no LLM)
 ttmd capabilities [engine]             # what signals exist (+ why some aren't queryable)
@@ -238,13 +239,15 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
   than naive, identical results. See `src/ttmd/discovery/README.md`.
 - **Two anomaly detectors, both built:** (1) *relational drift* — `ttmd baseline`
   then `ttmd detect`, or ask "has anything drifted" — flags within-mode
-  relationship-structure change (possible fault) + regime events (usage change),
-  vs a known-good baseline; (2) *behavioral norm* — flags how the asset is
+  relationship-structure change (possible fault) + regime events (usage change) +
+  regime-transition/sequencing change (the order operating modes occur in — a
+  usual step missing or a new jump appearing), vs a known-good baseline;
+  (2) *behavioral norm* — flags how the asset is
   OPERATED vs its own history (e.g. dwell-time: "stayed somewhere ~37x longer than
   usual"), no baseline needed. Both report the observed change, never the cause.
 - **Scales to a month+ with no changes** (measured): query ops stay sub-second to
   ~1s on ~14M rows/source; discovery is flat (row-capped sampling); the only cost
   that grows with calendar length is baseline-building (per-day loop). See
-  `TODO.md` for remaining hardening (regime transitions, multi-timescale,
-  geocoding place names, feeding drift into the LLM explanation).
+  `TODO.md` for remaining hardening (multi-timescale, geocoding place names,
+  feeding drift into the LLM explanation, joint/Mahalanobis detector).
 ```

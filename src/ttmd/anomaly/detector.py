@@ -19,10 +19,12 @@ import math
 import numpy as np
 
 import config
-from ttmd.discovery.loader import load_numeric
+from ttmd.discovery.loader import load_numeric, load_numeric_with_time
+from ttmd.discovery.regimes import label_sequence
 from ttmd.discovery.relationships import (
     build_per_regime_graphs, graphs_for_fixed_regimes)
 from .baseline import _fingerprint, _fingerprint_from_fixed, _edge_key
+from .transitions import detect_transition_anomalies
 
 
 # how many multiples of the normal-variation band counts as a flag
@@ -182,13 +184,20 @@ def detect_drift(source: str, dates: list[str], vessel: str,
         matches = {lab: lab for lab in new_fp["regimes"]}   # identity
         layer1 = _layer1_structure_drift(new_fp, base_fp, band, matches)
         layer2 = _layer2_regime_events(new_fp, base_fp, matches, [])
-        return {
+        out = {
             "source": source, "baseline_window": baseline.get("window"),
             "window": window, "assignment": "fixed-model (stable regime identity)",
             "layer1_structure_drift": layer1,
             "layer2_regime_events": layer2,
             "regime_matches": matches, "unmatched_regimes": [],
         }
+        # Layer-2 temporal: regime-transition (sequencing) change vs baseline.
+        base_tm = baseline.get("transitions")
+        if base_tm is not None:
+            trans = _window_transition_anomalies(globs, model, base_tm)
+            if trans is not None:
+                out["layer2_transition_events"] = trans
+        return out
 
     # legacy path: re-cluster + centroid match (baselines built before model reuse)
     disc = build_per_regime_graphs(cols, data, with_mi=with_mi)
@@ -203,6 +212,19 @@ def detect_drift(source: str, dates: list[str], vessel: str,
         "layer2_regime_events": layer2,
         "regime_matches": matches, "unmatched_regimes": unmatched,
     }
+
+
+def _window_transition_anomalies(globs, model, base_tm: dict) -> dict | None:
+    """Detect regime-transition (sequencing) changes for the new window vs the
+    baseline transition matrix. Returns None if the window has no time-ordered
+    labels."""
+    cols, data, ts = load_numeric_with_time(globs)
+    if ts.size == 0 or len(data) == 0:
+        return None
+    labels, _times = label_sequence(model, cols, data, ts)
+    if labels.size == 0:
+        return None
+    return detect_transition_anomalies(labels, base_tm)
 
 
 def _exists(glob_str: str) -> bool:

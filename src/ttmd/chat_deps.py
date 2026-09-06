@@ -1439,6 +1439,15 @@ class ChatDeps:
                 "top_changes": changed[:8],
                 "regime_events": drift.get("layer2_regime_events", [])[:5],
             }
+            # sequencing (regime-transition) change — the ORDER modes occur in
+            trans = drift.get("layer2_transition_events")
+            if trans and trans.get("findings"):
+                facts["drift"]["sequencing_changes"] = [
+                    {"type": f["type"], "from": f["from"], "to": f["to"],
+                     "baseline_prob": f["baseline_prob"], "window_prob": f["window_prob"]}
+                    for f in trans["findings"][:5]
+                ]
+                facts["drift"]["sequencing_confidence"] = trans.get("confidence")
         return facts
 
     def summarize(self, source, message):

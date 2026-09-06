@@ -20,9 +20,11 @@ from pathlib import Path
 import numpy as np
 
 import config
-from ttmd.discovery.loader import load_numeric
+from ttmd.discovery.loader import load_numeric, load_numeric_with_time
+from ttmd.discovery.regimes import label_sequence
 from ttmd.discovery.relationships import (
     build_per_regime_graphs, graphs_for_fixed_regimes)
+from .transitions import build_transition_matrix
 
 
 def _baseline_path(source: str) -> Path:
@@ -152,7 +154,24 @@ def build_baseline(source: str, dates: list[str], vessel: str,
     }
     if model is not None:
         out["regime_model"] = model
+        # Layer-2 temporal: baseline regime-transition fingerprint (which mode
+        # follows which, how often), over the whole time-ordered window.
+        tm = _baseline_transition_matrix(globs, model)
+        if tm is not None:
+            out["transitions"] = tm
     return out
+
+
+def _baseline_transition_matrix(globs, model) -> dict | None:
+    """Build the regime-transition matrix from the time-ordered baseline window.
+    Returns None if timestamps or labels aren't available."""
+    cols, data, ts = load_numeric_with_time(globs)
+    if ts.size == 0 or len(data) == 0:
+        return None
+    labels, _times = label_sequence(model, cols, data, ts)
+    if labels.size == 0:
+        return None
+    return build_transition_matrix(labels, k=len(model.get("centers", [])) or None)
 
 
 def _fingerprint_from_fixed(fixed: dict) -> dict:

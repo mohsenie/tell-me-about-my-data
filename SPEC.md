@@ -345,9 +345,20 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   regime model (column order + scaler + cluster centers); on detect, the new window
   is ASSIGNED to those exact regimes (no re-clustering), so regime identity is
   stable across windows (regime 0 vs baseline 0) and Layer-1 diffs are like-for-like.
-  Old model-less baselines fall back to re-cluster + centroid matching. Remaining
-  extensions (see TODO.md): regime transitions (Layer-2), multi-timescale (day/
-  month/year, sudden vs slow), and feeding drift into the LLM interpretation layer.
+  Old model-less baselines fall back to re-cluster + centroid matching.
+- **Regime transitions (Layer-2 temporal)** — the SEQUENCING of operating modes.
+  Using the timestamp plumbing (time-ordered per-row regime labels), the baseline
+  persists a TRANSITION MATRIX: consecutive runs collapsed to real mode changes
+  (i->j, i!=j), counted and normalized to P(next=j | current=i). On detect, the
+  window's transitions are compared: UNSEEN (i->j never in baseline = new
+  sequencing), RARE (baseline P below a floor), ABSENT (common in baseline, missing
+  now = a usual step dropped). Classified by significance, confidence by baseline
+  transition count, reported as `layer2_transition_events` in the drift result and
+  rendered as "SEQUENCING CHANGE" (plain "NEW/MISSING/UNUSUAL step"). Observed
+  change, never cause. Data-agnostic — labels carry no hardcoded meaning.
+  Remaining extensions (see TODO.md): multi-timescale (day/month/year, sudden vs
+  slow), feeding drift into the LLM interpretation layer, and the joint
+  (Mahalanobis) multivariate detector.
 - **Efficiency / consumption-per-distance (cross-source)**: "average fuel
   consumption per 20km / per mile / per nautical mile" integrates the rate over
   the window (litres) and divides by the track distance travelled in that window

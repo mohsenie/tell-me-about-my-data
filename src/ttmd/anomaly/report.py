@@ -19,6 +19,7 @@ def render_drift(result: dict) -> str:
 
     l1 = result.get("layer1_structure_drift", [])
     l2 = result.get("layer2_regime_events", [])
+    lt = result.get("layer2_transition_events")
 
     # Layer 1 — behavioral anomaly (likely fault)
     lines.append("BEHAVIORAL ANOMALY (within-mode relationship drift — possible fault):")
@@ -49,6 +50,31 @@ def render_drift(result: dict) -> str:
                          f"{e['window_fraction']*100:.0f}% of time "
                          f"(Δ{e['delta']*100:+.0f} points). {e['note']}")
     lines.append("")
+
+    # Layer 2 (temporal) — regime-transition / sequencing change
+    if lt is not None:
+        findings = lt.get("findings", [])
+        lines.append("SEQUENCING CHANGE (order in which operating modes occur — "
+                     f"confidence: {lt.get('confidence')}):")
+        if not lt.get("reliable"):
+            lines.append("  (limited baseline history for sequencing — "
+                         "interpret with caution.)")
+        if not findings:
+            lines.append("  none — the asset moves between modes in its usual order.")
+        for f in findings[:8]:
+            if f["type"] == "unseen_transition":
+                lines.append(f"    - NEW step {f['from']} -> {f['to']}: not seen in "
+                             f"the baseline ({f['window_count']}x this window).")
+            elif f["type"] == "absent_transition":
+                lines.append(f"    - MISSING step {f['from']} -> {f['to']}: usual in "
+                             f"the baseline ({f['baseline_prob']*100:.0f}% of exits "
+                             f"from mode {f['from']}), absent this window.")
+            elif f["type"] == "rare_transition":
+                lines.append(f"    - UNUSUAL step {f['from']} -> {f['to']}: rare in "
+                             f"the baseline ({f['baseline_prob']*100:.1f}%), now "
+                             f"{f['window_prob']*100:.0f}% of exits from mode {f['from']}.")
+        lines.append("")
+
     lines.append("Note: these are OBSERVED changes in the data. A change can come "
                  "from a developing fault OR a legitimate operational change "
                  "(route, load, weather) — the data alone can't tell which.")

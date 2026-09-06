@@ -80,14 +80,15 @@ DONE (hardening):
 
 REMAINING (drift-detector hardening — the three to finish the detector):
 
-- [ ] **1. Regime transitions (Layer-2 events)**: detect abnormal/unexpected
-      transitions between operating modes, not just distribution shifts. Requires
-      carrying per-row regime labels + timestamps through discovery (currently
-      load_numeric drops timestamp and clean_frame reorders/filters rows, so
-      temporal order is lost). Then persist the baseline's usual transition matrix
-      (which mode follows which, how often) and flag a new window's transitions
-      that are rare/absent in the baseline. Classify significance so routine
-      transitions (idle<->cruise) are context-only, not alerts.
+- [x] **1. Regime transitions (Layer-2 events)** — DONE. Timestamp plumbing
+      (load_numeric_with_time + label_sequence) carries time-ordered per-row regime
+      labels through discovery. anomaly/transitions.py builds a baseline transition
+      matrix (runs collapsed to real mode changes; P(next|current)); the baseline
+      persists it (`transitions`); detect_drift compares the window and reports
+      `layer2_transition_events` with UNSEEN / RARE / ABSENT transitions, classified
+      by significance, confidence by baseline transition count. Rendered as
+      "SEQUENCING CHANGE"; folded into summarize/reasoning facts. Observed change,
+      never cause. Data-agnostic (labels have no hardcoded meaning). Tested.
 
 - [ ] **2. Multi-timescale fingerprints**: build baselines/fingerprints at day /
       month / year granularity and compare adjacent-period vs long-baseline to
