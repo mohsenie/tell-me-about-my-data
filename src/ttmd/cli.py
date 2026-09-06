@@ -245,14 +245,24 @@ def cmd_review_docs(args) -> None:
     """
     kb = _kb(_asset_type(args))
     if args.action == "list":
+        # show the whole knowledge base by tier so the expert sees what's already
+        # authoritative alongside what still needs review.
+        confirmed = [f for f in kb.asset_facts()
+                     if f.get("source") != "document_extracted"]
         ext = kb.extracted_facts()
+        if confirmed:
+            print(f"Expert-confirmed ({len(confirmed)}, authoritative):")
+            for f in confirmed:
+                print(f"  [{f['id']}] {f['fact']}")
+            print()
         if not ext:
-            print("no document-extracted facts to review. Run `ttmd ingest-docs` first.")
+            print("No document-extracted facts awaiting review. "
+                  "Run `ttmd ingest-docs` to extract from manuals.")
             return
         print(f"{len(ext)} extracted fact(s) awaiting review "
               "(promote = vouch/authoritative, reject = remove):\n")
         for f in ext:
-            print(f"[{f['id']}] {f['fact']}  [{f.get('citation','doc')}]")
+            print(f"  [{f['id']}] {f['fact']}  [{f.get('citation','doc')}]")
         print("\nPromote: ttmd review-docs promote <id>")
         print("Reject:  ttmd review-docs reject <id>")
     elif args.action in ("promote", "reject"):
@@ -392,7 +402,7 @@ def cmd_chat(args) -> None:
     from ttmd.interpretation.orchestrator import Orchestrator
     from ttmd.chat_deps import ChatDeps
 
-    provider = get_provider()
+    provider = get_provider(meter=getattr(args, "usage", False))
     kb = _kb(_asset_type(args))
     deps = ChatDeps(_asset_type(args), provider, kb, vessel=args.vessel)
 
@@ -442,10 +452,16 @@ def cmd_chat(args) -> None:
             continue
         if msg.lower() in ("exit", "quit", "q"):
             break
+        if msg.lower() in ("usage", "cost", "tokens") and hasattr(provider, "summary_line"):
+            print(term.system("  " + provider.summary_line() + "\n"))
+            continue
         print(term.system("  ...thinking"), end="\r", flush=True)
         reply = session.send(msg)
         print(" " * 20, end="\r")  # clear the thinking line
         print(f"{term.assistant('assistant>')} {term.assistant(reply)}\n")
+    # on exit, if metering was on, print the session's LLM cost summary
+    if hasattr(provider, "summary_line"):
+        print(term.system(provider.summary_line()))
 
 
 def cmd_ask(args) -> None:
@@ -592,6 +608,9 @@ def main(argv: list[str] | None = None) -> None:
                     help="presentation mode: operator (business, plain) / technician "
                          "(component-focused) / analyst (full detail, default). "
                          "Change mid-chat with 'switch to <mode> mode'.")
+    ch.add_argument("--usage", action="store_true",
+                    help="track LLM token usage + estimated cost (type 'usage' "
+                         "mid-chat, and a summary prints on exit)")
     ch.set_defaults(fn=cmd_chat)
 
     ak = sub.add_parser("ask", help="scope-gated question entry (refuses off-domain)")

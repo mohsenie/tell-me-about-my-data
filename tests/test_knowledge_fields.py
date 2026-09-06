@@ -62,6 +62,56 @@ def test_kb_field_semantics_replace_idempotent(tmp_path):
     assert len(kb.field_semantics("engine")) == 1   # not duplicated
 
 
+# ---------------- expert review: promote / reject extracted facts ----------------
+def test_promote_extracted_fact(tmp_path):
+    kb = KnowledgeBase("ship", tmp_path / "kb.json")
+    kb.add_document_facts([{"fact": "Oil pressure drops at low idle.",
+                            "citation": "manual p.12"}], doc_source="m.pdf")
+    ext = [f for f in kb.asset_facts() if f["source"] == "document_extracted"]
+    assert len(ext) == 1
+    fid = ext[0]["id"]
+    kb.promote_fact(fid)
+    # now it's expert-confirmed, no longer an unverified extraction
+    facts = kb.asset_facts()
+    assert all(f["source"] != "document_extracted" for f in facts)
+    assert any(f["id"] == fid and f["source"] == "user_confirmed" for f in facts)
+
+
+def test_reject_extracted_fact_removes_it(tmp_path):
+    kb = KnowledgeBase("ship", tmp_path / "kb.json")
+    kb.add_document_facts([{"fact": "Wrong claim.", "citation": "m p.1"}],
+                          doc_source="m.pdf")
+    fid = kb.asset_facts()[0]["id"]
+    kb.reject_fact(fid)
+    assert kb.asset_facts() == []
+
+
+def test_promote_unknown_id_raises(tmp_path):
+    kb = KnowledgeBase("ship", tmp_path / "kb.json")
+    with pytest.raises(KeyError):
+        kb.promote_fact("deadbeef")
+
+
+# ---------------- LLM usage metering (token/cost logging) ----------------
+def test_usage_meter_counts_and_estimates():
+    from ttmd.interpretation.provider import UsageMeter, StubProvider
+    m = UsageMeter(StubProvider())
+    m.complete("system prompt here", "user message one")
+    m.complete("system two", "user message two longer")
+    s = m.summary()
+    assert s["calls"] == 2
+    assert s["total_tokens"] == s["input_tokens"] + s["output_tokens"] > 0
+    assert s["estimated_cost_usd"] >= 0
+    assert s["tokens_estimated"] is True          # stub -> estimated from length
+    assert "call(s)" in m.summary_line()
+
+
+def test_get_provider_meter_flag():
+    from ttmd.interpretation.provider import get_provider, UsageMeter
+    assert isinstance(get_provider(meter=True), UsageMeter)
+    assert not isinstance(get_provider(meter=False), UsageMeter)
+
+
 # ---------------- fields JSON parser ----------------
 def test_parse_clean_array():
     raw = '```json\n[{"field":"a","role":"none"},{"field":"b","role":"latitude"}]\n```'

@@ -305,8 +305,12 @@ learn from the known-good window per regime, persist, score a new window.
 
 ## P2 — LLM / interpretation
 
-- [ ] **Cost/token logging**: print actual input/output tokens + estimated cost
-      per command (measured ~890 tokens/call; interpret makes ~20 calls).
+- [x] **Cost/token logging** — DONE. provider.UsageMeter wraps any provider and
+      tallies calls + input/output tokens + an estimated cost (real usage from
+      Bedrock's Converse `usage`, else ~4 chars/token estimate). get_provider(meter
+      =True) opts in; `ttmd chat --usage` shows it (type 'usage' mid-chat, summary
+      on exit). Prices via env (TTMD_PRICE_IN/OUT_PER_1K) so no unverified rate is
+      hardcoded as fact. Tested.
 - [ ] **Reduce calls-per-interpret**: batch multiple relationships into one prompt
       (currently ~15 per-relationship + ~5 cluster calls). Cuts cost several-fold.
 - [ ] **Confirm Haiku-4.5 pricing** on the Bedrock pricing page (pricing API only
@@ -326,8 +330,11 @@ learn from the known-good window per regime, persist, score a new window.
 
 - [ ] **Web UI**: the whole thing is CLI-only. A non-technical operator/expert
       needs a visual interface (chat, plots inline, review). Big but eventual.
-- [ ] **Expert-review UX**: `review-docs` is id-based (fixed) but CLI-only; a
-      lightweight UI would help non-technical domain experts curate.
+- [x] **Expert-review UX (CLI)** — DONE. `ttmd review-docs list` now shows the full
+      knowledge base by tier (expert-confirmed vs document-extracted/unverified) with
+      stable ids; `ttmd review-docs promote <id>` (extracted -> confirmed) and `ttmd
+      review-docs reject <id>` (remove). Uses the existing id-based promote_fact/
+      reject_fact. Tested. A WEB UI for non-technical curation is still eventual.
 - [ ] **GPU (deferred, likely unnecessary)**: fast O(n log n) dCor solved the
       speed problem. Only revisit (CuPy/cuML) if fusing many sources over a full
       year without subsampling; note 8 GB VRAM (RTX 3070) ceiling.

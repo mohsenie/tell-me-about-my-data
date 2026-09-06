@@ -164,7 +164,10 @@ ttmd describe-fields engine            # protocol-aware field meanings (reviewab
 ttmd interpret engine                  # report + cited LLM hypotheses
 ttmd correct "EngineSpeed" "FuelTemperature" "reason" --general-fact "asset truth"
 ttmd ingest-docs                       # pre-analyze user-documentation/*.pdf -> facts
-ttmd review-docs list | promote <id> | reject <id>
+ttmd review-docs list                  # review learned facts by tier (stable ids)
+ttmd review-docs promote <id>          # extracted -> expert-confirmed
+ttmd review-docs reject <id>           # remove a wrong extracted fact
+ttmd chat --usage                      # track LLM tokens + estimated cost this session
 ```
 
 ## Data & metadata (user-provided, nothing hardcoded)
