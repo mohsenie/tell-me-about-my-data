@@ -273,13 +273,23 @@ learn from the known-good window per regime, persist, score a new window.
       in _edge_facts (direct/partial) + phrasing (describe_edge says "INDIRECT ...
       mostly explained by other signals"). Tested. Thresholds PARTIAL_DIRECT=0.1,
       PARTIAL_SHRINK=0.15.
-- [ ] **Time-aware (block) permutation significance** to kill autocorrelation
-      artifacts. Slow-drifting signals (fuel temp) show phantom dependence; the
-      current row-shuffle permutation breaks time structure. Use block permutation
-      or test on changes/innovations, not raw levels.
-- [ ] **Fused clustering blur**: combining heterogeneous sources lowers regime
-      separation (fused silhouette ~0.27 vs vibration 0.92). Consider per-source
-      regimes + cross-source relationships hybrid, or smarter feature selection.
+- [x] **Time-aware (block) permutation significance** — DONE. dependence.
+      block_permutation_pvalue(x, y): shuffles y in CONTIGUOUS blocks (preserving
+      each series' short-range autocorrelation, breaking only cross-series
+      alignment) -> an honest null; returns a p-value (fraction of permuted dCor >=
+      observed). pairwise_dependence(with_significance=True) annotates candidate
+      edges (dcor>=0.15) with pvalue + significant (p<=0.05). build_graph
+      (with_significance) stride-samples to KEEP time order. Verified: independent
+      random walks (phantom, dcor 0.49) come out non-significant; engine physical
+      couplings significant p=0.01, 10/45 edges flagged phantom. Advisory annotation
+      (not a hard drop). Tested.
+- [x] **Fused clustering blur** — DONE (hybrid). fusion.fused_relationship_graph:
+      computes the fused GLOBAL graph (the value = CROSS-SOURCE edges) but treats
+      fused REGIMES as a diagnostic only — reports regime_quality {silhouette, k,
+      blurred} (blurred if silhouette < FUSED_SILHOUETTE_MIN=0.35) with a note
+      steering users to per-source operating modes. cmd_fused prints the blur
+      warning. Verified: 4-source fusion silhouette 0.34 -> blurred=True, 257
+      cross-source edges surfaced. Per-source regimes stay authoritative. Tested.
 
 ---
 

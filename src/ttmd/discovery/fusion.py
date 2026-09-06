@@ -112,3 +112,51 @@ def fuse_sources(source_globs: dict[str, str]) -> tuple[list[str], np.ndarray]:
 def is_cross_source(edge: dict) -> bool:
     """True if an edge connects two different sources (prefix before '__')."""
     return edge["a"].split("__")[0] != edge["b"].split("__")[0]
+
+
+# below this silhouette, fused regimes are too blurred to trust as operating modes
+FUSED_SILHOUETTE_MIN = 0.35
+
+
+def fused_relationship_graph(source_globs: dict[str, str],
+                             with_mi: bool = False) -> dict:
+    """Cross-source discovery done the RIGHT way for heterogeneous sources.
+
+    Fusing dissimilar sources onto one grid BLURS regime clustering (a vibration
+    'at-rest vs vibrating' split and an engine 'idle vs cruise' split don't align,
+    so joint KMeans finds a low-separation compromise — measured silhouette ~0.27
+    vs ~0.92 single-source). So instead of trusting FUSED regimes, this computes:
+      - the fused GLOBAL relationship graph (where the value is: CROSS-SOURCE edges,
+        e.g. nmea.roll ~ vibration.accel_y — two sensors seeing the same motion),
+      - a regime_quality DIAGNOSTIC (the fused silhouette + a 'blurred' flag) so the
+        blur is surfaced honestly rather than presented as clean modes.
+    Per-source regimes stay authoritative (run per-source discovery for those).
+
+    Returns {global_graph, regime_quality, cross_source_edges, note}."""
+    from .relationships import build_graph, clean_frame
+    from .regimes import segment_regimes
+
+    cols, data = fuse_sources(source_globs)
+    graph = build_graph(cols, data, "global", with_mi=with_mi).to_dict()
+    ccols, clean = clean_frame(cols, data)
+    quality = {"silhouette": None, "k": 0, "blurred": None}
+    if ccols and len(clean) >= 50:
+        reg = segment_regimes(ccols, clean)
+        sil = reg.silhouette
+        quality = {
+            "silhouette": round(sil, 3) if sil is not None else None,
+            "k": reg.k,
+            "blurred": (sil is not None and sil < FUSED_SILHOUETTE_MIN),
+        }
+    cross = [e for e in graph.get("edges", []) if is_cross_source(e)]
+    cross.sort(key=lambda e: e.get("dcor", 0), reverse=True)
+    note = ("fused regimes look blurred (low separation) — use per-source operating "
+            "modes; the value here is the CROSS-SOURCE relationships below."
+            if quality.get("blurred") else
+            "fused regimes are reasonably separated.")
+    return {
+        "global_graph": graph,
+        "regime_quality": quality,
+        "cross_source_edges": cross,
+        "note": note,
+    }

@@ -6,13 +6,14 @@ nonlinear), operating regimes, and the per-regime relationship graph
 structural-drift anomaly detection.
 """
 from .dependence import (
-    DependenceResult, pairwise_dependence, classify, partial_correlation_matrix)
+    DependenceResult, pairwise_dependence, classify, partial_correlation_matrix,
+    block_permutation_pvalue)
 from .regimes import segment_regimes, RegimeResult, assign_labels, label_sequence
 from .loader import load_numeric, load_numeric_with_time
 
 __all__ = [
     "DependenceResult", "pairwise_dependence", "classify",
-    "partial_correlation_matrix",
+    "partial_correlation_matrix", "block_permutation_pvalue",
     "segment_regimes", "RegimeResult", "assign_labels", "label_sequence",
     "load_numeric", "load_numeric_with_time",
 ]

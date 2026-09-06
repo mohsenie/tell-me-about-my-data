@@ -46,6 +46,8 @@ class DependenceResult:
     kind: Kind
     partial: float | None = None   # partial correlation |controlling for the rest|
     direct: bool | None = None     # False => association is mostly common-driver haze
+    pvalue: float | None = None    # block-permutation significance (time-aware)
+    significant: bool | None = None  # False => likely autocorrelation phantom
 
     def to_dict(self) -> dict:
         d = {
@@ -58,6 +60,9 @@ class DependenceResult:
         if self.partial is not None:
             d["partial"] = round(self.partial, 4)
             d["direct"] = bool(self.direct)
+        if self.pvalue is not None:
+            d["pvalue"] = round(self.pvalue, 4)
+            d["significant"] = bool(self.significant)
         return d
 
 
@@ -98,6 +103,47 @@ try:
 except ImportError:  # pragma: no cover - fallback path
     distance_correlation = _distance_correlation_naive
     _DCOR_BACKEND = "naive O(n^2) (install `dcor` for the fast path)"
+
+
+def _block_permute(y: np.ndarray, n_blocks: int, rng) -> np.ndarray:
+    """Shuffle y in CONTIGUOUS blocks, preserving local time structure within each
+    block (so an autocorrelated series keeps its short-range shape). Breaking only
+    the cross-block alignment is what tests whether x~y is real or an artifact of
+    both being slow / autocorrelated."""
+    n = len(y)
+    if n_blocks < 2 or n_blocks > n:
+        return y[rng.permutation(n)]
+    # split into ~equal contiguous blocks, then reorder the blocks
+    bounds = np.array_split(np.arange(n), n_blocks)
+    order = rng.permutation(len(bounds))
+    return np.concatenate([y[bounds[i]] for i in order])
+
+
+def block_permutation_pvalue(x: np.ndarray, y: np.ndarray, observed: float | None = None,
+                             n_perm: int = 99, n_blocks: int = 10,
+                             seed: int = 0) -> float:
+    """Significance of x~y dCor under a BLOCK permutation null (time-aware).
+
+    Row-shuffling destroys ALL structure, so a slow/autocorrelated pair looks
+    "significant" against it even when the association is a shared-trend artifact.
+    Block permutation keeps each series' short-range time structure and only breaks
+    the cross-series alignment, giving an HONEST null. Returns the fraction of
+    permutations whose dCor >= the observed (a p-value); high => phantom edge.
+    Deterministic (seeded)."""
+    x = np.asarray(x, float); y = np.asarray(y, float)
+    if len(x) < 10:
+        return 1.0
+    if observed is None:
+        observed = distance_correlation(x, y)
+    if observed <= 0:
+        return 1.0
+    rng = np.random.default_rng(seed)
+    ge = 1  # +1 (the observed counts as one draw) -> never a zero p-value
+    for _ in range(n_perm):
+        yp = _block_permute(y, n_blocks, rng)
+        if distance_correlation(x, yp) >= observed:
+            ge += 1
+    return ge / (n_perm + 1)
 
 
 def pearson_abs(x: np.ndarray, y: np.ndarray) -> float:
@@ -161,16 +207,24 @@ def partial_correlation_matrix(data: np.ndarray) -> np.ndarray | None:
     return np.abs(np.clip(pcorr, -1.0, 1.0))
 
 
+# an edge whose block-permutation p-value is above this is likely a time-structure
+# (autocorrelation) phantom rather than a real dependence
+PVALUE_SIG = 0.05
+
+
 def pairwise_dependence(
     columns: list[str], data: np.ndarray, with_mi: bool = True,
+    with_significance: bool = False, n_perm: int = 99,
 ) -> list[DependenceResult]:
-    """Compute Pearson, dCor, (optional) MI, kind, and PARTIAL correlation for
-    every column pair.
+    """Compute Pearson, dCor, (optional) MI, kind, PARTIAL correlation, and
+    (optional) block-permutation SIGNIFICANCE for every column pair.
 
     `data` is (n_samples, n_columns), already cleaned (no NaN, no constants).
     The partial correlation controls for all other signals, distinguishing a
-    DIRECT link from a common-driver-INDUCED one (invariant: report structure
-    honestly). partial/direct are None when partialling can't be computed."""
+    DIRECT link from a common-driver-INDUCED one. with_significance adds a
+    time-aware block-permutation p-value per candidate edge (dcor>=DCOR_NONE only,
+    to bound cost) so autocorrelation phantoms can be flagged. Both extras are
+    None when not computed / not applicable — reported honestly."""
     p = data.shape[1]
     mi = _mi_matrix(data) if with_mi else None
     pcorr = partial_correlation_matrix(data)
@@ -187,6 +241,12 @@ def pairwise_dependence(
                 induced = (partial < PARTIAL_DIRECT
                            and (r - partial) > PARTIAL_SHRINK)
                 direct = not induced
+            pval = sig = None
+            if with_significance and d >= DCOR_NONE:
+                pval = block_permutation_pvalue(data[:, i], data[:, j], observed=d,
+                                                n_perm=n_perm, seed=0)
+                sig = pval <= PVALUE_SIG
             out.append(DependenceResult(columns[i], columns[j], r, d, m,
-                                        classify(r, d), partial=partial, direct=direct))
+                                        classify(r, d), partial=partial, direct=direct,
+                                        pvalue=pval, significant=sig))
     return out

@@ -64,13 +64,18 @@ def clean_frame(columns: list[str], data: np.ndarray,
     return cols, sub[row_ok]
 
 
-def build_graph(columns, data, scope="global", with_mi=True, max_samples=None):
+def build_graph(columns, data, scope="global", with_mi=True, max_samples=None,
+                with_significance=False):
     """Relationship graph over the given rows (a window/day/month/regime slice).
 
     dCor is O(n^2) per pair and O(p^2) in pairs, so for wide sources (many
     signals) we shrink the row sample to keep runtime bounded. Sample cap scales
     down with signal count unless max_samples is given explicitly.
-    """
+
+    with_significance adds a time-aware block-permutation p-value per edge. That
+    needs TEMPORAL ORDER, so when it's set we DOWNSAMPLE BY STRIDE (evenly spaced,
+    order-preserving) instead of random sampling — otherwise the block permutation
+    is meaningless. Data must already be time-ordered by the caller."""
     cols, clean = clean_frame(columns, data)
     if max_samples is None:
         # Fast O(n log n) dCor lets us use far more samples than the old naive
@@ -78,9 +83,15 @@ def build_graph(columns, data, scope="global", with_mi=True, max_samples=None):
         p = max(len(cols), 1)
         max_samples = 10000 if p <= 15 else (5000 if p <= 30 else 2500)
     if len(clean) > max_samples:
-        rng = np.random.default_rng(0)
-        clean = clean[rng.choice(len(clean), max_samples, replace=False)]
-    edges = pairwise_dependence(cols, clean, with_mi=with_mi)
+        if with_significance:
+            # order-preserving stride sample (keeps time structure for the null)
+            idx = np.linspace(0, len(clean) - 1, max_samples).astype(int)
+            clean = clean[idx]
+        else:
+            rng = np.random.default_rng(0)
+            clean = clean[rng.choice(len(clean), max_samples, replace=False)]
+    edges = pairwise_dependence(cols, clean, with_mi=with_mi,
+                                with_significance=with_significance)
     return RelationshipGraph(scope=scope, n_samples=len(clean), edges=edges)
 
 

@@ -241,6 +241,12 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
   signals) flags edges that are strong only because of a shared driver (e.g. two
   pressures that both track engine load), so the report separates a real
   relationship from common-driver haze.
+- **Autocorrelation-aware significance:** a time-aware block-permutation test flags
+  edges that look dependent only because both signals drift slowly (a shared trend),
+  so phantom relationships are marked instead of trusted.
+- **Honest fusion:** fusing dissimilar sources blurs joint clustering, so cross-source
+  discovery reports the cross-source RELATIONSHIPS (the trustworthy output) and warns
+  when the fused operating-modes are low-separation — per-source modes stay authoritative.
 - **Three anomaly detectors, all built:** (1) *relational drift* — `ttmd baseline`
   then `ttmd detect`, or ask "has anything drifted" — flags within-mode
   relationship-structure change (possible fault) + regime events (usage change) +

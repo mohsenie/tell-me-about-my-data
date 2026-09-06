@@ -160,3 +160,51 @@ def test_induced_edge_phrasing():
             "pearson": 0.81, "kind": "linear", "direct": False, "partial": 0.004}
     txt = ph.describe_edge(edge, False)
     assert "INDIRECT" in txt and "boost" in txt.lower()
+
+
+# ---------------- block-permutation significance ----------------
+def test_block_permutation_flags_autocorrelation_phantom():
+    """Two INDEPENDENT random walks look dependent (shared autocorrelation), but a
+    time-aware block-permutation null does NOT call it strongly significant."""
+    from ttmd.discovery.dependence import (block_permutation_pvalue,
+                                           distance_correlation)
+    rng = np.random.default_rng(0)
+    a = np.cumsum(rng.normal(size=2000))
+    b = np.cumsum(rng.normal(size=2000))          # independent walk
+    assert distance_correlation(a, b) > 0.2       # phantom looks dependent
+    p = block_permutation_pvalue(a, b, n_perm=99, n_blocks=10)
+    assert p > 0.05                               # not significant -> flagged phantom
+
+
+def test_block_permutation_short_series_pvalue_one():
+    from ttmd.discovery.dependence import block_permutation_pvalue
+    assert block_permutation_pvalue(np.arange(5.0), np.arange(5.0)) == 1.0
+
+
+def test_pairwise_with_significance_annotates_edges():
+    """with_significance adds pvalue + significant to candidate edges."""
+    from ttmd.discovery.dependence import pairwise_dependence
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=800)
+    data = np.column_stack([x, 2 * x + rng.normal(0, 0.1, size=800),
+                            rng.normal(size=800)])
+    res = pairwise_dependence(["x", "y", "z"], data, with_mi=False,
+                              with_significance=True, n_perm=49)
+    strong = next(r for r in res if {r.a, r.b} == {"x", "y"})
+    assert strong.pvalue is not None and strong.significant is True   # real link
+
+
+# ---------------- fused clustering blur diagnostic ----------------
+def test_fused_relationship_graph_reports_quality(has_data):
+    from ttmd.discovery.fusion import fused_relationship_graph
+    srcs = [s for s in config.discover_sources()][:3]
+    if len(srcs) < 2:
+        pytest.skip("need >=2 sources")
+    globs = {s: config.source_glob(s) for s in srcs}
+    res = fused_relationship_graph(globs, with_mi=False)
+    assert "regime_quality" in res and "cross_source_edges" in res
+    q = res["regime_quality"]
+    assert "silhouette" in q and "blurred" in q
+    # every cross-source edge really spans two different sources
+    for e in res["cross_source_edges"][:20]:
+        assert e["a"].split("__")[0] != e["b"].split("__")[0]

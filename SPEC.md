@@ -154,9 +154,12 @@ short scales. Year-over-year handles seasonality.
   signals) annotates each edge direct vs INDUCED — a strong marginal edge whose
   partial correlation collapses is flagged as a common-driver artifact, not a direct
   link (e.g. engine boost~oil-pressure, both driven by load). Reported in phrasing.
-- **Autocorrelation artifacts.** Slow-drifting signals (fuel temp) can show
-  phantom dependence. **Need time-aware (block) permutation significance.** NOT
-  yet implemented.
+- **Autocorrelation artifacts.** Slow-drifting signals can show phantom
+  dependence. ADDRESSED: block_permutation_pvalue permutes one series in
+  contiguous blocks (keeps each series' autocorrelation, breaks cross-series
+  alignment) for an honest time-aware null; pairwise_dependence(with_significance)
+  annotates edges with pvalue + significant (p<=0.05). Advisory (flags phantoms;
+  doesn't hard-drop). Independent random walks correctly come out non-significant.
 - **Undirected.** dCor/MI/Pearson are symmetric — no causal direction. Directed
   edges (lag / transfer entropy) are a separate, hypothesis-only extension.
 - **O(n^2) cost.** dCor is O(n^2) in samples and O(p^2) in signal pairs. Wide
@@ -496,9 +499,10 @@ Remaining highlights:
    window+integral). Remaining: geocoding place names -> coordinates (opt-in,
    data/config-driven port list or geocoder) and auto leg-detection from the track
    (so "the last voyage" needs no endpoints).
-3. **Discovery refinements** — partial/conditional dependence DONE (prunes
-   common-driver haze); still TODO: time-aware permutation significance
-   (autocorrelation artifacts), fused-clustering blur.
+3. **Discovery refinements** — DONE: partial/conditional dependence (prunes
+   common-driver haze), time-aware block-permutation significance (flags
+   autocorrelation phantoms), fused-clustering blur diagnostic (per-source regimes
+   authoritative + fused cross-source relationships + a blurred-silhouette warning).
 4. **Retrieval upgrade** — embeddings for document search (current keyword overlap
    pulls ToC noise). **Report formatting** — constrain verbose LLM output.
 5. **Unify query fuel_consumption** to resolve signal/unit/aggregation from field

@@ -81,6 +81,18 @@ def cmd_fused(args) -> None:
     out.write_text(json.dumps(result, indent=2, default=str))
     _print_discovery_summary("fused", result)
 
+    # honest regime-quality diagnostic: fusing heterogeneous sources blurs the
+    # clustering, so warn if the fused regimes are low-separation (the cross-source
+    # RELATIONSHIPS are the trustworthy output, not the fused modes).
+    reg = result.get("regimes", {})
+    sil = reg.get("silhouette")
+    from ttmd.discovery.fusion import FUSED_SILHOUETTE_MIN
+    if sil is not None and sil < FUSED_SILHOUETTE_MIN:
+        print(f"\nNOTE: fused regimes are blurred (silhouette {sil:.2f} < "
+              f"{FUSED_SILHOUETTE_MIN}) — fusing dissimilar sources lowers regime "
+              "separation. Trust per-source operating modes; use fusion for the "
+              "CROSS-SOURCE relationships below.")
+
     g = result["graphs"].get("global", {})
     cross = [e for e in g.get("edges", []) if is_cross_source(e)]
     cross.sort(key=lambda e: e["dcor"], reverse=True)
