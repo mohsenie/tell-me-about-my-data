@@ -14,7 +14,7 @@ from ttmd.query import (
     aggregate, list_capabilities, describe_capabilities,
     current_position, ships_nearby, voyage_window, track_distance_km,
     distance_segments, entity_position_at, haversine_km, signal_by_location,
-    nearest_place, place_label)
+    nearest_place, place_label, detect_legs)
 from ttmd.query.timeparse import parse_instant
 
 
@@ -175,6 +175,38 @@ def test_known_places_loads_from_yaml(has_data):
     if not places:
         pytest.skip("no places configured for this vessel")
     assert all("name" in p and "lat" in p and "lon" in p for p in places)
+
+
+# ---------------- voyage / leg auto-detection ----------------
+def test_detect_legs_wellformed(pos_source, globs):
+    """Auto-detected legs are chronological, positive-distance, place-labeled."""
+    src, lat, lon = pos_source
+    legs = detect_legs(globs(src), lat, lon, places=config.known_places())
+    if not legs:
+        pytest.skip("no distinct legs on this track (needs >=2 stops)")
+    for lg in legs:
+        assert lg["t_end"] > lg["t_start"]           # forward in time
+        assert lg["distance_km"] > 0                 # actually moved
+        assert isinstance(lg["from"], str) and isinstance(lg["to"], str)
+    # most recent last (non-decreasing start times)
+    starts = [lg["t_start"] for lg in legs]
+    assert starts == sorted(starts)
+
+
+def test_is_last_trip_guard():
+    from ttmd.chat_deps import ChatDeps
+    assert ChatDeps._is_last_trip("how much fuel on the last voyage")
+    assert ChatDeps._is_last_trip("the most recent trip")
+    assert not ChatDeps._is_last_trip("average engine speed")
+    assert not ChatDeps._is_last_trip("fuel from 54.5,18 to 57,-4")
+
+
+def test_list_voyages_capability(deps, has_data):
+    """list_voyages returns either detected legs or a clear 'no distinct voyages'
+    message — never an error."""
+    out = deps.list_voyages("engine", "list my voyages")
+    assert isinstance(out, str) and len(out) > 0
+    assert ("voyage leg" in out.lower()) or ("couldn't identify" in out.lower())
 
 
 def test_haversine_km():

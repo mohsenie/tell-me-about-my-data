@@ -896,9 +896,21 @@ class ChatDeps:
         """
         from ttmd.query import voyage_window, aggregate
 
+        # 0. TRIP ABSTRACTION: "the last voyage / trip / leg" needs no coordinates —
+        # auto-detect legs from the track and use the most recent one's window.
+        pts = self._voyage_points(params)
+        if pts is None and self._is_last_trip(message):
+            leg = self._last_leg()
+            if leg is None:
+                return ("I couldn't identify a completed voyage from the track yet "
+                        "(need at least two port-calls/stops). Give me start and end "
+                        "coordinates and I'll compute it directly.")
+            return self._voyage_over_window(source, message, params, leg,
+                                            win_label=f"the last voyage "
+                                            f"({leg['from']} -> {leg['to']})")
+
         # 1. start/end points. Coordinates only for now; place names need a
         # geocoder (a separate, opt-in follow-up) — say so rather than guess.
-        pts = self._voyage_points(params)
         if pts is None:
             if params.get("from_place") or params.get("to_place"):
                 return ("I can compute voyage fuel between two COORDINATES today "
@@ -1274,6 +1286,76 @@ class ChatDeps:
         if None in (fl, fo, tl, to):
             return None
         return (fl, fo), (tl, to)
+
+    @staticmethod
+    def _is_last_trip(message):
+        """True if the message references the most recent voyage/leg/trip without
+        giving coordinates ('the last voyage', 'most recent trip', 'this leg')."""
+        low = (message or "").lower()
+        has_trip = any(w in low for w in ("voyage", "trip", "leg", "journey", "passage"))
+        has_recent = any(w in low for w in ("last", "latest", "recent", "this",
+                                            "current", "most recent"))
+        return has_trip and has_recent
+
+    def _detect_legs(self):
+        """Auto-detected voyage legs on the own-position source (place-named via
+        the offline port list). Empty if no position track / <2 stops."""
+        from ttmd.query import detect_legs
+        pos_src = self._own_position_source()
+        if not pos_src:
+            return []
+        lat, lon = self._latlon_cols(pos_src)
+        if not (lat and lon):
+            return []
+        globs = present_globs([config.source_glob(pos_src, self.vessel)])
+        if not globs:
+            return []
+        return detect_legs(globs, lat, lon, places=config.known_places(self.vessel))
+
+    def _last_leg(self):
+        legs = self._detect_legs()
+        return legs[-1] if legs else None
+
+    def list_voyages(self, source, message):
+        """List the auto-detected voyages/legs (port-call to port-call), most
+        recent last, with place names + distance + duration. No endpoints needed."""
+        legs = self._detect_legs()
+        if not legs:
+            return ("I couldn't identify distinct voyages from the track yet — that "
+                    "needs at least two port-calls (near-stationary stops). The "
+                    "asset may have stayed in one area over the available data.")
+        import datetime as _dt
+        lines = [f"{len(legs)} voyage leg(s) detected from the position track "
+                 "(most recent last):"]
+        for lg in legs:
+            f = _dt.datetime.utcfromtimestamp(lg["t_start"]).strftime("%m-%d %H:%M")
+            t = _dt.datetime.utcfromtimestamp(lg["t_end"]).strftime("%m-%d %H:%M")
+            lines.append(f"  - {lg['from']} -> {lg['to']}: {lg['distance_km']:.0f} km, "
+                         f"{lg['duration_h']:.1f} h ({f} -> {t} UTC)")
+        return "\n".join(lines)
+
+    def _voyage_over_window(self, source, message, params, leg, win_label):
+        """Integrate the rate signal over an ALREADY-KNOWN leg window (from trip
+        auto-detection). Mirrors voyage()'s integral step but skips the coordinate
+        -> window match (the leg already carries t_start/t_end)."""
+        from ttmd.query import aggregate
+        rates = self._rate_signals(source)
+        if not rates:
+            return (f"Found {win_label}, but '{source}' has no consumption/rate "
+                    "signal to total over it. Describe the fields or name the rate.")
+        signal = self._resolve_rate(params.get("signal"), source, rates, message)
+        _, rate_unit = resolve_aggregation(signal, source, self.kb, default="integral")
+        unit = self._integrated_unit(rate_unit)
+        globs = present_globs([config.source_glob(source, self.vessel)])
+        t_range = (leg["t_start"], leg["t_end"])
+        res = aggregate(globs, signal, "integral", "voyage", unit=unit, t_range=t_range)
+        val = f"{res.value:,.1f} {unit}".strip() if res.value is not None else "n/a"
+        import datetime as _dt
+        f = _dt.datetime.utcfromtimestamp(leg["t_start"]).strftime("%Y-%m-%d %H:%M")
+        t = _dt.datetime.utcfromtimestamp(leg["t_end"]).strftime("%Y-%m-%d %H:%M")
+        return (f"{signal} used on {win_label}: {val}. "
+                f"Window {f} -> {t} UTC ({leg['duration_h']:.1f} h), "
+                f"track ~{leg['distance_km']:.0f} km.")
 
     def detect_anomaly(self, source, message):
         """Check whether `source` has DRIFTED from its known-good baseline.

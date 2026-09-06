@@ -250,6 +250,10 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
 - **Place names, offline:** add a `places:` list (name/lat/lon) to `sources.yaml` and
   position answers name the nearest port ("Inverness Marina") instead of raw
   coordinates — no network, entirely from your list; raw coords when nothing is close.
+- **Voyages, auto-detected:** ask "list my voyages" or "how much fuel on the last
+  voyage" — it segments the track into port-calls, treats the gaps as legs
+  (place-named, with distance and duration), and totals the rate over the most
+  recent leg without you giving any coordinates.
 - **Three anomaly detectors, all built:** (1) *relational drift* — `ttmd baseline`
   then `ttmd detect`, or ask "has anything drifted" — flags within-mode
   relationship-structure change (possible fault) + regime events (usage change) +

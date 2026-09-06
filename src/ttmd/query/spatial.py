@@ -356,6 +356,49 @@ def nearest_place(lat: float, lon: float, places: list[dict],
     return best
 
 
+def detect_legs(globs: list[str], lat_col: str, lon_col: str,
+                places: list[dict] | None = None,
+                move_km: float = 1.0, min_stop_s: float = 1800) -> list[dict]:
+    """Auto-detect VOYAGE LEGS from the position track — no endpoints needed.
+
+    Segments the track into near-stationary STOPS (port-calls) with the same
+    detector the behavioral layer uses, then the periods BETWEEN consecutive stops
+    are the legs (the asset was underway). Each leg is reverse-geocoded to place
+    names via the user's places list (offline). A leg is kept only if it actually
+    moved (distance travelled > move_km) so we don't emit noise between two fixes
+    of the same port-call.
+
+    Returns [{index, from, to, from_place, to_place, t_start, t_end, duration_h,
+    distance_km}], most recent LAST. `from`/`to` are labels (place name or coords).
+    Data-agnostic: column names are role-resolved by the caller; nothing hardcoded."""
+    from ttmd.anomaly.behavioral import detect_stops
+    places = places or []
+    stops = detect_stops(globs, lat_col, lon_col, move_km=move_km,
+                         min_stop_s=min_stop_s)
+    if len(stops) < 2:
+        return []
+    legs = []
+    for i in range(len(stops) - 1):
+        a, b = stops[i], stops[i + 1]
+        t0, t1 = a["t_end"], b["t_start"]     # underway between end-of-A and start-of-B
+        if t1 <= t0:
+            continue
+        dist = track_distance_km(globs, lat_col, lon_col, t_range=(t0, t1))
+        if dist <= move_km:
+            continue                          # didn't really go anywhere
+        legs.append({
+            "index": len(legs),
+            "from": place_label(a["lat"], a["lon"], places),
+            "to": place_label(b["lat"], b["lon"], places),
+            "from_place": (nearest_place(a["lat"], a["lon"], places) or {}).get("name"),
+            "to_place": (nearest_place(b["lat"], b["lon"], places) or {}).get("name"),
+            "t_start": t0, "t_end": t1,
+            "duration_h": round((t1 - t0) / 3600.0, 2),
+            "distance_km": round(dist, 1),
+        })
+    return legs
+
+
 def place_label(lat: float, lon: float, places: list[dict]) -> str:
     """Human label for a coordinate: 'Name (lat, lon)' if within a known place,
     else just 'lat, lon'. Convenience for position/voyage answers."""

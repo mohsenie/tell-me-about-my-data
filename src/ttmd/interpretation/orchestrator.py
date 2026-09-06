@@ -471,6 +471,14 @@ class Orchestrator:
                 notice = self._auto_describe_fields(src)
             if params is None:
                 params = self._extract_params(message)
+            # LIST voyages ("what trips has it made", "list voyages/legs") — a
+            # trip-listing question, not a consumption total. Deterministic guard.
+            low = message.lower()
+            if (any(w in low for w in ("voyage", "trip", "leg", "journey", "passage"))
+                    and any(w in low for w in ("list", "what ", "which", "how many",
+                                               "show", "detected"))
+                    and not any(w in low for w in ("fuel", "consum", "used", "burn"))):
+                return notice + d.list_voyages(src, message)
             return notice + d.voyage(src, message, params)
 
         if intent == "efficiency":

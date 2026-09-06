@@ -500,9 +500,12 @@ Remaining highlights:
    window+integral). REVERSE geocoding is DONE (offline): a user-provided `places:`
    list in sources.yaml (name/lat/lon/radius_km, no network) drives
    nearest_place()/place_label(), so position answers name the port ("Inverness
-   Marina") when in range, raw coords otherwise. Remaining: FORWARD name->coord for
-   voyage endpoints, and auto leg-detection from the track (so "the last voyage"
-   needs no endpoints).
+   Marina") when in range, raw coords otherwise. Auto LEG-DETECTION is DONE:
+   spatial.detect_legs segments the track into port-calls (stops) and treats the
+   gaps as legs (place-labeled, with distance + duration); "the last voyage" /
+   "list voyages" work with NO endpoints (ChatDeps.list_voyages + a last-trip branch
+   in voyage() that integrates the rate over the most recent leg window). Remaining:
+   FORWARD name->coord for explicit voyage endpoints.
 3. **Discovery refinements** — DONE: partial/conditional dependence (prunes
    common-driver haze), time-aware block-permutation significance (flags
    autocorrelation phantoms), fused-clustering blur diagnostic (per-source regimes

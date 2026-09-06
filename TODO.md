@@ -223,11 +223,19 @@ REMAINING:
 - [ ] **Forward geocoding / port lookup** (place name -> coords for voyage
       endpoints): the reverse direction is done; forward name->coord lookup over the
       same places list is the small remaining piece (voyage still takes coordinates).
-- [ ] **Voyage / leg auto-detection**: derive legs from the track automatically
-      (regime 'underway' periods between port calls) so a user can ask about "the
-      last voyage" without giving endpoints. Departure/arrival = regime transitions.
-- [ ] **Voyage/trip abstraction**: a first-class "trip" object (from/to/when/
-      distance) users can reference ("the leg to Rotterdam", "last voyage").
+- [x] **Voyage / leg auto-detection + trip abstraction** — DONE. spatial.detect_legs
+      segments the track into port-calls (behavioral.detect_stops) and the gaps
+      between consecutive stops become legs [{from,to (place-labeled), t_start,
+      t_end, duration_h, distance_km}] (kept only if distance>move_km). ChatDeps:
+      list_voyages (list detected legs), _last_leg / _is_last_trip guard, and a
+      "last voyage" branch in voyage() that integrates the rate over the most recent
+      leg window (via _voyage_over_window) — so "how much fuel on the last voyage"
+      needs NO coordinates. Orchestrator routes "list/what voyages" to list_voyages.
+      Verified on ais-own: 3 legs, last ending at Inverness Marina, 96 km/9.6h. Tested.
+- [x] **Voyage/trip abstraction** — DONE (see above): the auto-detected leg is the
+      first-class "trip" (from/to/when/distance) users reference as "the last
+      voyage". Remaining nicety: reference a leg by destination place name ("the leg
+      to Rotterdam") — a small extension of the name matching.
 
 ---
 
