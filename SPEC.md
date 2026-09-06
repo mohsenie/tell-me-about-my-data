@@ -356,9 +356,17 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   transition count, reported as `layer2_transition_events` in the drift result and
   rendered as "SEQUENCING CHANGE" (plain "NEW/MISSING/UNUSUAL step"). Observed
   change, never cause. Data-agnostic — labels carry no hardcoded meaning.
-  Remaining extensions (see TODO.md): multi-timescale (day/month/year, sudden vs
-  slow), feeding drift into the LLM interpretation layer, and the joint
-  (Mahalanobis) multivariate detector.
+- **Multi-timescale fingerprints** — separates a SUDDEN break from SLOW drift.
+  Groups the available dates into periods at a granularity (day/month/year, parsed
+  from the partition key — timescale-agnostic, nothing hardcoded), builds one
+  fingerprint per period against the SAME persisted regime model, reduces each pair
+  to a scalar distance (mean abs per-edge dcor change), then reports per period the
+  distance to the PREVIOUS period (adjacent step) and to the FIRST period
+  (cumulative). A large adjacent step -> sudden_break; large cumulative with only
+  small steps -> slow_drift (both -> sudden_and_slow; neither -> stable). Folded
+  into summarize/reasoning facts as `temporal_pattern`. Observed pattern, not cause.
+  Remaining extensions (see TODO.md): feeding drift into the LLM interpretation
+  layer, and the joint (Mahalanobis) multivariate detector.
 - **Efficiency / consumption-per-distance (cross-source)**: "average fuel
   consumption per 20km / per mile / per nautical mile" integrates the rate over
   the window (litres) and divides by the track distance travelled in that window

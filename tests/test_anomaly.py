@@ -168,3 +168,55 @@ def test_baseline_persists_transitions_and_detector_surfaces(has_data):
     te = res.get("layer2_transition_events")
     assert te is not None
     assert "findings" in te and "confidence" in te and "reliable" in te
+
+
+# ---------------- multi-timescale fingerprints ----------------
+def test_period_key_and_grouping():
+    from ttmd.anomaly import period_key, group_dates
+    assert period_key("2026-09-04", "day") == "2026-09-04"
+    assert period_key("2026-09-04", "month") == "2026-09"
+    assert period_key("2026-09-04", "year") == "2026"
+    g = group_dates(["2026-09-03", "2026-09-01", "2026-10-02"], "month")
+    assert [k for k, _ in g] == ["2026-09", "2026-10"]        # chronological
+    assert g[0][1] == ["2026-09-01", "2026-09-03"]            # dates sorted in group
+
+
+def test_fingerprint_distance_symmetry_and_zero():
+    from ttmd.anomaly import fingerprint_distance
+    fp = {"regimes": {"0": {"edges": {"a::b": 0.5}}}}
+    assert fingerprint_distance(fp, fp)["distance"] == 0.0     # identity
+    fp2 = {"regimes": {"0": {"edges": {"a::b": 0.9}}}}
+    d1 = fingerprint_distance(fp, fp2)["distance"]
+    d2 = fingerprint_distance(fp2, fp)["distance"]
+    assert d1 == d2 and d1 > 0                                 # symmetric, positive
+
+
+def test_classify_sudden_vs_slow():
+    from ttmd.anomaly.timescale import _classify
+    assert _classify([0.01, 0.02, 0.01], [0.01, 0.02, 0.02])["pattern"] == "stable"
+    assert _classify([0.02, 0.30, 0.02], [0.02, 0.30, 0.28])["pattern"] == "sudden_break"
+    assert _classify([0.05, 0.05, 0.05, 0.05],
+                     [0.05, 0.10, 0.14, 0.20])["pattern"] == "slow_drift"
+    assert _classify([], [0.0])["pattern"] == "insufficient_history"
+
+
+@pytest.mark.slow
+def test_multiscale_drift_endtoend(has_data):
+    """End-to-end: a per-period fingerprint series with step + cumulative
+    distances and a classification, on the fixed regime model."""
+    src = "engine" if "engine" in config.discover_sources() else _first_multiday_source()
+    if not src:
+        pytest.skip("no source")
+    dates = config.available_dates(src)
+    if len(dates) < 2:
+        pytest.skip("need >=2 days")
+    bl = build_baseline(src, dates[:2], config.DEFAULT_VESSEL, with_mi=False)
+    model = bl.get("regime_model")
+    if model is None:
+        pytest.skip("degenerate clustering (no model)")
+    from ttmd.anomaly import multiscale_drift
+    res = multiscale_drift(src, dates, config.DEFAULT_VESSEL, model, granularity="day")
+    assert res.get("n_periods", 0) >= 1
+    assert res["periods"][0]["step_distance"] is None          # first has no prev
+    assert res["periods"][0]["cumulative_distance"] == 0.0     # vs itself
+    assert "pattern" in res["classification"]

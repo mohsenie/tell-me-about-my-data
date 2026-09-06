@@ -21,10 +21,13 @@ from .detector import detect_drift
 from .behavioral import detect_stops, dwell_norm, flag_current_dwell
 from .transitions import (
     build_transition_matrix, detect_transition_anomalies, runs_from_labels)
+from .timescale import (
+    multiscale_drift, fingerprint_distance, group_dates, period_key)
 
 __all__ = [
     "build_baseline", "save_baseline", "load_baseline", "has_baseline",
     "detect_drift",
     "detect_stops", "dwell_norm", "flag_current_dwell",
     "build_transition_matrix", "detect_transition_anomalies", "runs_from_labels",
+    "multiscale_drift", "fingerprint_distance", "group_dates", "period_key",
 ]

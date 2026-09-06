@@ -1448,6 +1448,20 @@ class ChatDeps:
                     for f in trans["findings"][:5]
                 ]
                 facts["drift"]["sequencing_confidence"] = trans.get("confidence")
+            # multi-timescale: is the change a SUDDEN break or SLOW drift?
+            model = baseline.get("regime_model")
+            if model is not None and len(dates) >= 2:
+                from ttmd.anomaly import multiscale_drift
+                ms = multiscale_drift(source, dates, self.vessel, model,
+                                      granularity="day", with_mi=False)
+                cls = ms.get("classification", {})
+                if cls.get("pattern") and cls["pattern"] not in ("stable",
+                                                                  "insufficient_history"):
+                    facts["drift"]["temporal_pattern"] = {
+                        "pattern": cls["pattern"],
+                        "note": cls.get("note", ""),
+                        "final_cumulative": cls.get("final_cumulative"),
+                    }
         return facts
 
     def summarize(self, source, message):

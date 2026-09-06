@@ -90,12 +90,16 @@ REMAINING (drift-detector hardening — the three to finish the detector):
       "SEQUENCING CHANGE"; folded into summarize/reasoning facts. Observed change,
       never cause. Data-agnostic (labels have no hardcoded meaning). Tested.
 
-- [ ] **2. Multi-timescale fingerprints**: build baselines/fingerprints at day /
-      month / year granularity and compare adjacent-period vs long-baseline to
-      separate SUDDEN breaks from SLOW drift, plus year-over-year for seasonality.
-      Currently a single window vs a single baseline. Needs windowing helpers
-      beyond date-partition granularity and a comparison mode that reports "abrupt
-      change since yesterday" distinctly from "gradual drift over months".
+- [x] **2. Multi-timescale fingerprints** — DONE. anomaly/timescale.py groups the
+      available dates into periods at a granularity (day/month/year, parsed from the
+      partition key — timescale-agnostic), builds one fingerprint per period against
+      the fixed regime model, reduces each pair to a scalar distance (fingerprint_
+      distance), and reports per period the adjacent-step distance + cumulative-vs-
+      first distance. _classify separates sudden_break (a large adjacent step) from
+      slow_drift (large cumulative, small steps), plus sudden_and_slow / stable.
+      Folded into summarize/reasoning facts as drift.temporal_pattern. Tested
+      (helpers + classifier branches + e2e). Year-over-year is the same mechanism at
+      granularity="year" once multi-year data exists.
 
 - [ ] **3. Feed drift into the interpretation layer**: let the LLM EXPLAIN a
       flagged drift (which edges changed, in which mode) grounded in the knowledge
