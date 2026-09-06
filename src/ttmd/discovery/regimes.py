@@ -63,6 +63,26 @@ class RegimeResult:
         }
 
 
+def label_sequence(model: dict, columns: list[str], data: np.ndarray,
+                   ts: np.ndarray):
+    """Time-ordered (label, timestamp) sequence for rows, assigning each row to a
+    regime via the persisted `model`. Rows whose MODEL columns are all-NaN are
+    dropped (can't assign). `data`/`ts` must be time-ordered and aligned (as from
+    load_numeric_with_time). Returns (labels, times) as aligned np arrays. Used
+    for regime-transition detection — needs temporal order the graph path loses."""
+    mcols = model["columns"]
+    idx = {c: i for i, c in enumerate(columns)}
+    present = [c for c in mcols if c in idx]
+    if not present or len(data) == 0:
+        return np.empty(0, int), np.empty(0)
+    cols_i = [idx[c] for c in present]
+    sub = data[:, cols_i]
+    ok = ~np.isnan(sub).all(axis=1)          # keep rows with >=1 model signal
+    labels = assign_labels(model, columns, data[ok])
+    times = ts[ok] if len(ts) == len(data) else np.arange(int(ok.sum()))
+    return labels, times
+
+
 def assign_labels(model: dict, columns: list[str], data: np.ndarray) -> np.ndarray:
     """Assign each row of `data` (with its own `columns` order) to the nearest
     regime in a persisted `model` (from RegimeResult.model_params). Standardizes

@@ -93,3 +93,30 @@ def test_render_markdown_nonempty(has_data):
     disc = build_per_regime_graphs(cols, data, with_mi=False)
     md = render_markdown(describe_discovery(disc, "engine"))
     assert isinstance(md, str) and len(md) > 50 and "##" in md
+
+
+# ---------------- timestamp / label-sequence plumbing ----------------
+def test_load_numeric_with_time_aligned_sorted(has_data):
+    """load_numeric_with_time returns row-aligned, time-ordered timestamps."""
+    from ttmd.discovery.loader import load_numeric_with_time
+    g = glob.glob(config.source_glob("engine"))
+    cols, data, ts = load_numeric_with_time(g)
+    assert data.shape[0] == ts.shape[0]          # row-aligned
+    assert data.shape[1] == len(cols)
+    assert (ts[1:] >= ts[:-1]).all()             # chronological
+
+
+def test_label_sequence_time_ordered(has_data):
+    """label_sequence assigns a per-row regime label aligned with sorted times."""
+    from ttmd.discovery.loader import load_numeric, load_numeric_with_time
+    from ttmd.discovery.regimes import segment_regimes, label_sequence
+    g = glob.glob(config.source_glob("engine"))
+    cols, data, ts = load_numeric_with_time(g)
+    c2, d2 = load_numeric(g)
+    cc, cd = clean_frame(c2, d2)
+    model = segment_regimes(cc, cd).model_params()
+    labels, times = label_sequence(model, cols, data, ts)
+    assert labels.shape[0] == times.shape[0]     # aligned
+    assert (times[1:] >= times[:-1]).all()       # chronological
+    # every label is a valid regime index
+    assert set(labels.tolist()).issubset(set(range(len(model["centers"]))))

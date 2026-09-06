@@ -222,6 +222,33 @@ REMAINING:
 
 ---
 
+## P1 — Joint / higher-order multivariate detection (the 3rd detector)
+
+The relational drift detector is PAIRWISE (A<->B couplings). It misses anomalies
+that live only in a 3-way+ interaction with no pairwise footprint, and it scores
+a window's STRUCTURE, not individual points. This track adds a JOINT detector,
+complementary to relational-drift + behavioral-norm. Same per-regime pattern:
+learn from the known-good window per regime, persist, score a new window.
+
+- [ ] **Per-regime Mahalanobis / covariance envelope (do first)**: per regime,
+      store mean + covariance from the known-good window; score each new row by
+      Mahalanobis distance against its regime's envelope; flag points/windows
+      beyond a chi-square threshold. Training-FREE, deterministic, light (numpy),
+      and EXPLAINABLE — Mahalanobis decomposes into per-signal contributions, so
+      we can still say "unusual mainly because of oil-pressure vs speed". Captures
+      the joint distribution (closes most of the higher-order gap) while keeping
+      the system's zero-training / explainable character. Point-level scoring.
+- [ ] **Autoencoder backend (optional, later)**: a per-regime AE (train-on-normal;
+      reconstruction error = score) for STRONGLY NONLINEAR normal manifolds the
+      covariance model can't capture. Behind a flag; adds a training loop + dep
+      (stochastic, needs enough per-regime data). MUST keep per-feature error
+      attribution so it isn't a black-box number (preserve the persona/operator
+      explainability). The heavier, nonlinear version of the Mahalanobis idea.
+      NOTE: an AE regresses the "no training / deterministic / self-explaining"
+      properties — hence optional and second, only where covariance is insufficient.
+
+---
+
 ## P1 — Discovery quality (makes results trustworthy)
 
 - [ ] **Partial / conditional dependence** to prune the common-driver haze. On the
