@@ -247,6 +247,9 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
 - **Honest fusion:** fusing dissimilar sources blurs joint clustering, so cross-source
   discovery reports the cross-source RELATIONSHIPS (the trustworthy output) and warns
   when the fused operating-modes are low-separation — per-source modes stay authoritative.
+- **Place names, offline:** add a `places:` list (name/lat/lon) to `sources.yaml` and
+  position answers name the nearest port ("Inverness Marina") instead of raw
+  coordinates — no network, entirely from your list; raw coords when nothing is close.
 - **Three anomaly detectors, all built:** (1) *relational drift* — `ttmd baseline`
   then `ttmd detect`, or ask "has anything drifted" — flags within-mode
   relationship-structure change (possible fault) + regime events (usage change) +

@@ -10,7 +10,8 @@ from .compute import (
 )
 from .spatial import (
     current_position, ships_nearby, voyage_window, track_distance_km,
-    distance_segments, entity_position_at, haversine_km, signal_by_location)
+    distance_segments, entity_position_at, haversine_km, signal_by_location,
+    nearest_place, place_label)
 
 __all__ = [
     "list_capabilities", "describe_capabilities",

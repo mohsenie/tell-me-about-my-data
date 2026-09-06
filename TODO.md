@@ -214,13 +214,15 @@ REMAINING:
       "on 2026-09-02 at 19:00" now returns the fix AT that instant (parse_instant
       handles relative phrases AND absolute ISO dates; position() uses it with a
       30-min tolerance), not just the latest fix.
-- [ ] **Reverse geocoding**: turn a position into a place name ("57.48,-4.25" ->
-      "near Inverness"). Position answers are currently raw coordinates.
-- [ ] **Geocoding / port lookup**: resolve place names ("Gdynia", "Scotland") to
-      coordinates so the user can say place names instead of lat/lon. voyage
-      currently accepts COORDINATES and tells the user to provide them when a
-      place name is given. Needs a geocoder (opt-in; outbound network) or a user-
-      provided port list (data/config-driven, not hardcoded).
+- [x] **Reverse geocoding** — DONE (offline). config.known_places(vessel) reads a
+      user-provided `places:` list (name/lat/lon/radius_km) from sources.yaml — NO
+      network. spatial.nearest_place(lat, lon, places) returns the closest place
+      within its radius (else None); spatial.place_label formats "Name (lat, lon
+      [, ~N km away])" or raw coords. position() now reports place names. Verified:
+      the real stop -> "Inverness Marina"; open water -> raw coords. Tested.
+- [ ] **Forward geocoding / port lookup** (place name -> coords for voyage
+      endpoints): the reverse direction is done; forward name->coord lookup over the
+      same places list is the small remaining piece (voyage still takes coordinates).
 - [ ] **Voyage / leg auto-detection**: derive legs from the track automatically
       (regime 'underway' periods between port calls) so a user can ask about "the
       last voyage" without giving endpoints. Departure/arrival = regime transitions.

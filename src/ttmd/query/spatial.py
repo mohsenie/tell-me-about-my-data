@@ -333,6 +333,40 @@ def haversine_km(lat1, lon1, lat2, lon2) -> float:
     return round(_haversine_km(lat1, lon1, lat2, lon2), 3)
 
 
+# fallback "at this place" radius when a place entry omits its own radius_km
+_DEFAULT_PLACE_RADIUS_KM = 10.0
+
+
+def nearest_place(lat: float, lon: float, places: list[dict],
+                  default_radius_km: float = _DEFAULT_PLACE_RADIUS_KM) -> dict | None:
+    """Reverse-geocode a coordinate to the nearest USER-provided place, OFFLINE.
+
+    `places` is config.known_places(): [{name, lat, lon, radius_km?}]. Returns
+    {name, distance_km, lat, lon} for the closest place within its radius (its own
+    radius_km, else default_radius_km), or None if no place is close enough (the
+    caller then reports raw coordinates). No network — pure haversine over the
+    user's list."""
+    best = None
+    for p in places or []:
+        d = _haversine_km(lat, lon, p["lat"], p["lon"])
+        radius = p.get("radius_km") or default_radius_km
+        if d <= radius and (best is None or d < best["distance_km"]):
+            best = {"name": p["name"], "distance_km": round(d, 2),
+                    "lat": p["lat"], "lon": p["lon"]}
+    return best
+
+
+def place_label(lat: float, lon: float, places: list[dict]) -> str:
+    """Human label for a coordinate: 'Name (lat, lon)' if within a known place,
+    else just 'lat, lon'. Convenience for position/voyage answers."""
+    hit = nearest_place(lat, lon, places)
+    coords = f"{lat:.5f}, {lon:.5f}"
+    if hit:
+        near = "" if hit["distance_km"] <= 1.0 else f", ~{hit['distance_km']:.0f} km away"
+        return f"{hit['name']} ({coords}{near})"
+    return coords
+
+
 def signal_by_location(pos_globs, lat_col, lon_col, value_globs, value_exprs,
                        cell_deg=0.1, t_range=None, max_tolerance_s=600):
     """Aggregate a signal (or a combined magnitude of several) over GEOGRAPHIC

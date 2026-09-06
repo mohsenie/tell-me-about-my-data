@@ -21,3 +21,21 @@ sources:
   vibration:
     protocol: custom
     description: Engine-mounted vibration sensor (accel + edge FFT features)
+
+# Optional place/port list — provided by the USER, used to turn coordinates into
+# human place names OFFLINE (no network geocoder). Each: name, lat, lon, and an
+# optional radius_km (how close counts as "at" that place; default applies if
+# omitted). The system reports the nearest place within range, else raw coords.
+places:
+  - name: Inverness Marina
+    lat: 57.4870
+    lon: -4.2530
+    radius_km: 5
+  - name: Fort William
+    lat: 56.8198
+    lon: -5.1052
+    radius_km: 5
+  - name: Kessock Bridge
+    lat: 57.5030
+    lon: -4.2360
+    radius_km: 3

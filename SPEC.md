@@ -198,7 +198,8 @@ src/ttmd/
     compute.py               aggregate() / fuel_consumption() (time-integral) /
                              latest(). fuel rate+unit resolved from field semantics.
     plots.py                 scatter (correlation) / trend (bucketed) / timeseries
-    spatial.py               current_position() / ships_nearby() (haversine)
+    spatial.py               current_position() / ships_nearby() (haversine) /
+                             nearest_place()+place_label() (offline reverse-geocode)
     timeparse.py             "13:00 yesterday" etc -> epoch (UTC, vs data's latest)
   interpretation/            LLM layer, bounded to the domain
     provider.py              LLMProvider + StubProvider + BedrockProvider (Converse)
@@ -496,9 +497,12 @@ Remaining highlights:
    (c) FEED DRIFT into the LLM interpretation layer so it explains flagged edges,
    grounded in KB + docs. (See TODO.md P0 REMAINING.)
 2. **Voyage by place name** — coordinate-based voyage fuel is DONE (cross-source
-   window+integral). Remaining: geocoding place names -> coordinates (opt-in,
-   data/config-driven port list or geocoder) and auto leg-detection from the track
-   (so "the last voyage" needs no endpoints).
+   window+integral). REVERSE geocoding is DONE (offline): a user-provided `places:`
+   list in sources.yaml (name/lat/lon/radius_km, no network) drives
+   nearest_place()/place_label(), so position answers name the port ("Inverness
+   Marina") when in range, raw coords otherwise. Remaining: FORWARD name->coord for
+   voyage endpoints, and auto leg-detection from the track (so "the last voyage"
+   needs no endpoints).
 3. **Discovery refinements** — DONE: partial/conditional dependence (prunes
    common-driver haze), time-aware block-permutation significance (flags
    autocorrelation phantoms), fused-clustering blur diagnostic (per-source regimes

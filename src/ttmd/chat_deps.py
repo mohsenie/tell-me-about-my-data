@@ -684,20 +684,22 @@ class ChatDeps:
         # the position AT that instant; otherwise the most recent fix.
         tmin, tmax = self._time_range(globs)
         at = parse_instant(message, tmin, tmax)
+        from ttmd.query.spatial import place_label
+        places = config.known_places(self.vessel)
         if at is not None:
             fix = self._position_at(globs, lat, lon, at, tolerance_s=1800)
             when = _dt.datetime.utcfromtimestamp(at).strftime("%Y-%m-%d %H:%M UTC")
             if not fix:
                 return (f"No position fix near {when} (no data within 30 min of "
                         "that time).")
-            return (f"Position at {when}: {fix['lat']:.5f}, {fix['lon']:.5f} "
-                    "(lat, lon).")
+            return (f"Position at {when}: "
+                    f"{place_label(fix['lat'], fix['lon'], places)} (lat, lon).")
         pos = current_position(globs, lat, lon)
         if not pos:
             return "No position data available."
         when = _dt.datetime.utcfromtimestamp(pos["timestamp"]).strftime("%Y-%m-%d %H:%M UTC")
-        return (f"Most recent position ({when}): {pos['lat']:.5f}, {pos['lon']:.5f} "
-                f"(lat, lon).")
+        return (f"Most recent position ({when}): "
+                f"{place_label(pos['lat'], pos['lon'], places)} (lat, lon).")
 
     def distance_travelled(self, source, message, params):
         """How far the asset travelled over a window = length of the position

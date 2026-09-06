@@ -59,6 +59,27 @@ def source_metadata(vessel: str = DEFAULT_VESSEL) -> dict:
     return data.get("sources", {})
 
 
+def known_places(vessel: str = DEFAULT_VESSEL) -> list[dict]:
+    """User-provided place/port list from sources.yaml (top-level 'places'), for
+    turning coordinates into human place names WITHOUT any network geocoder.
+
+    Each entry: {name, lat, lon, [radius_km]}. USER input (the customer knows the
+    ports on their route); missing -> empty list (system degrades to raw coords).
+    NOT hardcoded and NOT fetched from the internet (offline by design)."""
+    import yaml
+    path = SHIP_DATA_DIR / vessel / "sources.yaml"
+    if not path.exists():
+        return []
+    data = yaml.safe_load(path.read_text()) or {}
+    out = []
+    for p in data.get("places", []) or []:
+        if p.get("name") is not None and p.get("lat") is not None and p.get("lon") is not None:
+            out.append({"name": str(p["name"]), "lat": float(p["lat"]),
+                        "lon": float(p["lon"]),
+                        "radius_km": float(p["radius_km"]) if p.get("radius_km") else None})
+    return out
+
+
 def asset_type(vessel: str = DEFAULT_VESSEL) -> str:
     """Asset type declared by the user in sources.yaml (top-level 'asset_type'),
     else a neutral fallback. NOT hardcoded to 'ship'."""

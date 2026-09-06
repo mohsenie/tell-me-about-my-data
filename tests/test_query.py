@@ -13,7 +13,8 @@ import config
 from ttmd.query import (
     aggregate, list_capabilities, describe_capabilities,
     current_position, ships_nearby, voyage_window, track_distance_km,
-    distance_segments, entity_position_at, haversine_km, signal_by_location)
+    distance_segments, entity_position_at, haversine_km, signal_by_location,
+    nearest_place, place_label)
 from ttmd.query.timeparse import parse_instant
 
 
@@ -136,6 +137,44 @@ def test_voyage_window_directional(pos_source, globs):
         f'WHERE "{lat}" IS NOT NULL ORDER BY timestamp DESC LIMIT 1').fetchone()
     win = voyage_window(g, lat, lon, s[0], s[1], e[0], e[1])
     assert win and win["t_end"] >= win["t_start"] and win["track_km"] > 0
+
+
+# ---------------- reverse geocoding (offline port list) ----------------
+_PLACES = [
+    {"name": "Inverness Marina", "lat": 57.4870, "lon": -4.2530, "radius_km": 5},
+    {"name": "Fort William", "lat": 56.8198, "lon": -5.1052, "radius_km": 5},
+]
+
+
+def test_nearest_place_within_radius():
+    hit = nearest_place(57.487, -4.253, _PLACES)
+    assert hit is not None and hit["name"] == "Inverness Marina"
+    assert hit["distance_km"] < 0.1
+
+
+def test_nearest_place_open_water_none():
+    assert nearest_place(50.0, -10.0, _PLACES) is None    # nothing in range
+
+
+def test_nearest_place_picks_closest():
+    # near Fort William, far from Inverness -> Fort William wins
+    hit = nearest_place(56.82, -5.10, _PLACES)
+    assert hit["name"] == "Fort William"
+
+
+def test_place_label_named_vs_raw():
+    assert "Inverness Marina" in place_label(57.487, -4.253, _PLACES)
+    # off the list -> raw coordinates, no name
+    lbl = place_label(50.0, -10.0, _PLACES)
+    assert "Marina" not in lbl and "50.0" in lbl
+
+
+def test_known_places_loads_from_yaml(has_data):
+    places = config.known_places()
+    # sample vessel ships a places list; names are present with coords
+    if not places:
+        pytest.skip("no places configured for this vessel")
+    assert all("name" in p and "lat" in p and "lon" in p for p in places)
 
 
 def test_haversine_km():
