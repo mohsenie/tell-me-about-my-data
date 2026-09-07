@@ -1026,11 +1026,10 @@ class ChatDeps:
                f"({to_lat:.4f}, {to_lon:.4f}): {val}. "
                f"Window {f} → {t} UTC ({dur_h:.1f} h), track ~{win['track_km']:.0f} km"
                f" [from '{pos_src}' position, integrated on '{source}'].{note}")
-        # compound "...and is that normal for the distance?" -> efficiency-vs-history
+        # compound "...and is that normal for the distance?" -> always answer it
+        # (verdict, or an honest can't-judge-yet reason), never silently drop it.
         if self._wants_normal_check(message) and res.value is not None:
-            verdict = self._voyage_efficiency_norm(source, signal, unit)
-            if verdict:
-                out += "\n" + verdict
+            out += "\n" + self._voyage_efficiency_norm(source, signal, unit)
         return out
 
     def _integrated_unit(self, rate_unit):
@@ -1412,13 +1411,13 @@ class ChatDeps:
         out = (f"{signal} used on {win_label}: {val}. "
                f"Window {f} -> {t} UTC ({leg['duration_h']:.1f} h), "
                f"track ~{leg['distance_km']:.0f} km.")
-        # If the question ALSO asked whether that's normal for the distance, append
-        # an efficiency-vs-own-history verdict (per-distance consumption vs prior
-        # voyages). No baseline needed — the norm is the asset's own past legs.
+        # If the question ALSO asked whether that's normal for the distance, ALWAYS
+        # respond to it — with the per-distance verdict when we have the history, or
+        # an honest "can't judge yet, here's why" otherwise (never silently drop the
+        # part of the question the user asked). No baseline needed — the norm is the
+        # asset's own past voyages.
         if self._wants_normal_check(message) and res.value is not None:
-            verdict = self._voyage_efficiency_norm(source, signal, unit)
-            if verdict:
-                out += "\n" + verdict
+            out += "\n" + self._voyage_efficiency_norm(source, signal, unit)
         return out
 
     @staticmethod
@@ -1432,15 +1431,20 @@ class ChatDeps:
 
     def _voyage_efficiency_norm(self, source, signal, unit):
         """Compare the MOST RECENT leg's per-distance consumption to the asset's
-        own prior legs. Returns a plain-language verdict, or None if there isn't
-        enough voyage history. Data-agnostic: fuel/km = (rate integrated over the
-        leg) / (leg distance); norm = median/p90 of prior legs. Reports the
-        observed comparison, never the cause; confidence by number of prior legs."""
+        own prior legs. ALWAYS returns a message: the verdict when there's enough
+        history, else an honest 'can't judge yet, here's why' (so the caller never
+        silently drops the 'is it normal?' part). Data-agnostic: fuel/km = (rate
+        integrated over the leg) / (leg distance); norm = median/p90 of prior legs.
+        Observed comparison, never the cause; confidence by number of prior legs."""
         import statistics
         from ttmd.query import aggregate
+        _cant = ("Whether that's within the expected range: I can't judge it yet — "
+                 "that compares this trip's fuel-per-distance to enough PRIOR "
+                 "voyages, and ")
         legs = self._detect_legs()
         if len(legs) < 3:                     # need a couple of priors + the current
-            return None
+            return _cant + (f"I've only detected {len(legs)} voyage(s) so far "
+                            "(need at least a few port-to-port trips to form a norm).")
         globs = present_globs([config.source_glob(source, self.vessel)])
         per_km = []
         for lg in legs:
@@ -1451,8 +1455,12 @@ class ChatDeps:
             per_km.append((r.value / lg["distance_km"]) if r.value is not None else None)
         cur = per_km[-1]
         hist = [v for v in per_km[:-1] if v is not None]
-        if cur is None or len(hist) < 2:
-            return None
+        if cur is None:
+            return _cant + "this voyage has no usable fuel data over its window."
+        if len(hist) < 2:
+            return _cant + (f"only {len(hist)} earlier voyage(s) have fuel data over "
+                            f"their window on '{source}' (the others fall outside its "
+                            "available dates), so there isn't a reliable range yet.")
         med = statistics.median(hist)
         p90 = _percentile_local(hist, 90)
         iunit = f"{unit}/km" if unit else "per km"

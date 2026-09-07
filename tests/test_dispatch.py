@@ -164,6 +164,31 @@ def test_voyage_efficiency_norm_verdict(deps, monkeypatch):
     assert verdict is not None and "HIGHER than usual" in verdict
 
 
+def test_voyage_efficiency_norm_honest_when_thin(deps, monkeypatch):
+    """When there aren't enough prior voyages with fuel data, the check does NOT
+    return None (silent drop) — it explains it can't judge yet."""
+    legs = [
+        {"from": "A", "to": "B", "t_start": 0, "t_end": 10, "distance_km": 100},
+        {"from": "B", "to": "C", "t_start": 20, "t_end": 30, "distance_km": 100},
+        {"from": "C", "to": "D", "t_start": 40, "t_end": 50, "distance_km": 100},
+    ]
+    monkeypatch.setattr(deps, "_detect_legs", lambda: legs)
+
+    class _R:
+        def __init__(self, v): self.value = v
+    # only ONE prior leg has fuel data -> not enough for a range
+    fuels = {(0, 10): None, (20, 30): 110.0, (40, 50): 300.0}
+
+    def fake_aggregate(globs, signal, agg, label, unit=None, t_range=None):
+        return _R(fuels[t_range])
+    import ttmd.query as _q
+    monkeypatch.setattr(_q, "aggregate", fake_aggregate)
+
+    msg = deps._voyage_efficiency_norm("engine", "EngineFuelRate", "L")
+    assert msg is not None
+    assert "can't judge it yet" in msg          # honest, not silent
+
+
 # ---------------- signal labeling (detector -> field-semantics meaning) ----------
 def test_signal_label_translates_via_semantics(deps, kb_ship):
     """A raw signal column is translated to its field-semantics meaning; an

@@ -374,8 +374,16 @@ a lot of what decomposition would, so item 5 is a last resort.
       ambiguity) and appends the per-distance normality verdict. Verified against the
       LIVE Bedrock router: the exact question now answers the last-voyage fuel total.
       Tested with a FakeProvider returning the verbose "ambiguous" verdict.
+- [x] **Honest 'is it normal?' when history is thin.** Previously, when the per-
+      distance norm couldn't be computed (fewer than ~2 prior voyages with fuel data
+      over their window — common on the sample where engine dates don't span all
+      legs), the "is it within expected range?" part was SILENTLY dropped.
+      _voyage_efficiency_norm now ALWAYS returns a message — the verdict when there's
+      enough history, else an explicit "I can't judge it yet — here's why (only N
+      prior voyages have fuel data over their window)". Verified live: answers BOTH
+      the fuel total and the range question. Tested (thin-history path).
       TODO(next): GENERAL compound-question decomposition (answer each sub-question)
-      is still not done — these two fixes cover the common fuel/voyage cases.
+      is still not done — these fixes cover the common fuel/voyage cases.
 
 ---
 
