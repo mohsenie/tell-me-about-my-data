@@ -90,6 +90,48 @@ def test_scope_refuses_offdomain(fake, deps, kb_ship):
     assert reply == REFUSAL
 
 
+# ---------------- signal labeling (detector -> field-semantics meaning) ----------
+def test_signal_label_translates_via_semantics(deps, kb_ship):
+    """A raw signal column is translated to its field-semantics meaning; an
+    undescribed one falls back to the raw name (no fabrication)."""
+    kb_ship.set_field_semantics("engine", [
+        {"field": "EngineCoolantTemperature", "description": "coolant temperature",
+         "unit": "degC", "role": "none", "confidence": "high", "aggregation": "avg"},
+    ])
+    assert deps._signal_label("engine", "EngineCoolantTemperature") == \
+        "coolant temperature (degC)"
+    assert deps._signal_label("engine", "NotDescribed") == "NotDescribed"
+
+
+def test_label_top_signals_attaches_meaning(deps, kb_ship):
+    kb_ship.set_field_semantics("engine", [
+        {"field": "EngineOilPressure", "description": "oil pressure", "unit": "kPa",
+         "role": "none", "confidence": "high", "aggregation": "avg"},
+    ])
+    out = deps._label_top_signals("engine",
+                                  [{"signal": "EngineOilPressure", "share": 0.4}])
+    assert out[0]["meaning"] == "oil pressure (kPa)" and out[0]["share"] == 0.4
+
+
+def test_label_drift_signals_enriches_ae_and_joint(deps, kb_ship):
+    """_label_drift_signals adds 'meaning' to joint + AE flagged signals in place."""
+    kb_ship.set_field_semantics("engine", [
+        {"field": "EngineSpeed", "description": "engine speed", "unit": "rpm",
+         "role": "none", "confidence": "high", "aggregation": "avg"},
+    ])
+    result = {
+        "joint_anomalies": {"findings": [
+            {"regime": "0", "top_signals": [{"signal": "EngineSpeed", "share": 0.7}]}]},
+        "ae_anomalies": {"findings": [
+            {"regime": "1", "top_signals": [{"signal": "EngineSpeed", "share": 0.5}]}]},
+    }
+    deps._label_drift_signals("engine", result)
+    assert result["joint_anomalies"]["findings"][0]["top_signals"][0]["meaning"] \
+        == "engine speed (rpm)"
+    assert result["ae_anomalies"]["findings"][0]["top_signals"][0]["meaning"] \
+        == "engine speed (rpm)"
+
+
 # ---------------- drift explanation ("why?" follow-up) ----------------
 def test_is_why_followup_guard():
     """The deterministic causal-follow-up guard fires on short 'why' questions

@@ -247,6 +247,38 @@ class ChatDeps:
                          f"[{f.get('unit') or '?'}, {f.get('confidence','?')}{role_tag}]")
         return "\n".join(lines)
 
+    def _semantics_map(self, source):
+        """{field: {description, unit, role, confidence}} from the field-semantics
+        JSON. The bridge that turns a raw column the detector points at into a
+        human meaning. Empty if fields haven't been described yet."""
+        return {f["field"]: f for f in self.kb.field_semantics(source) if f.get("field")}
+
+    def _signal_label(self, source, signal, sem=None):
+        """Human label for a raw signal column via field-semantics: e.g.
+        'EngineCoolantTemperature' -> 'coolant temperature (degC)'. Falls back to
+        the raw name if the field isn't described. Data-driven — nothing hardcoded."""
+        sem = sem if sem is not None else self._semantics_map(source)
+        e = sem.get(signal)
+        if not e:
+            return signal
+        desc = e.get("description") or e.get("meaning") or signal
+        unit = e.get("unit")
+        return f"{desc} ({unit})" if unit and unit not in ("?", "none") else desc
+
+    def _label_top_signals(self, source, top_signals, sem=None):
+        """Attach the field-semantics meaning to each detector-flagged signal so an
+        anomaly (from AE or Mahalanobis) POINTS AT the raw column AND says what it
+        means. Returns [{signal, meaning, share}]."""
+        sem = sem if sem is not None else self._semantics_map(source)
+        out = []
+        for s in top_signals:
+            name = s.get("signal") if isinstance(s, dict) else s
+            item = {"signal": name, "meaning": self._signal_label(source, name, sem)}
+            if isinstance(s, dict) and "share" in s:
+                item["share"] = s["share"]
+            out.append(item)
+        return out
+
     def _window(self, source, days):
         globs, label = resolve_window(source, self.vessel, days=days)
         return present_globs(globs), label
@@ -1397,7 +1429,25 @@ class ChatDeps:
         # stash the structured findings so a follow-up "why?" can EXPLAIN them
         self._last_drift = {"source": source, "result": result,
                             "behavioral": behavioral}
+        # Label the raw signals the joint/AE detectors point at with their
+        # field-semantics meaning, so the rendered report reads in human terms.
+        self._label_drift_signals(source, result)
         return beh_txt + render_drift(result)
+
+    def _label_drift_signals(self, source, result):
+        """Add a 'meaning' to each flagged signal in the joint/AE findings using
+        the field-semantics JSON (in place). No-op if fields aren't described."""
+        sem = self._semantics_map(source)
+        if not sem:
+            return
+        for key in ("joint_anomalies", "ae_anomalies"):
+            block = result.get(key)
+            if not block:
+                continue
+            for f in block.get("findings", []):
+                for s in f.get("top_signals", []):
+                    if isinstance(s, dict) and s.get("signal"):
+                        s["meaning"] = self._signal_label(source, s["signal"], sem)
 
     def explain_drift(self, message):
         """Explain the LAST detected drift/behavioral change (a chat 'why?' follow-
@@ -1425,20 +1475,19 @@ class ChatDeps:
             findings["sequencing_changes"] = [
                 {"type": f["type"], "from": f["from"], "to": f["to"]}
                 for f in trans["findings"][:5]]
-        joint = result.get("joint_anomalies")
-        if joint and joint.get("overall_flagged_fraction", 0) > 0:
-            findings["joint_anomalies"] = [
-                {"regime": f["regime"], "flagged_fraction": f["flagged_fraction"],
-                 "top_signals": [s["signal"] for s in f.get("top_signals", [])[:3]]}
-                for f in joint.get("findings", []) if f.get("n_flagged", 0) > 0][:4]
+        # Joint / AE anomalies: the DETECTOR points at raw signal columns; the
+        # field-semantics JSON translates each into a human meaning right on the
+        # finding (so "the anomaly is in signal X" reads as "in coolant temp").
+        sem = self._semantics_map(source)
+        for key in ("joint_anomalies", "ae_anomalies"):
+            block = result.get(key)
+            if block and block.get("overall_flagged_fraction", 0) > 0:
+                findings[key] = [
+                    {"regime": f["regime"], "flagged_fraction": f["flagged_fraction"],
+                     "signals": self._label_top_signals(source, f.get("top_signals", [])[:3], sem)}
+                    for f in block.get("findings", []) if f.get("n_flagged", 0) > 0][:4]
         if last.get("behavioral"):
             findings["behavioral"] = last["behavioral"]
-        # ground: field semantics (to translate signals), asset facts, docs
-        fs = self.kb.field_semantics(source)
-        if fs:
-            findings["signal_meanings"] = {
-                f["field"]: f.get("meaning") or f.get("role")
-                for f in fs if f.get("field")}
         facts = "\n".join("- " + f.get("fact", "") for f in self.kb.asset_facts()) or "(none)"
         docs_txt = "(none)"
         if config.USER_DOC_DIR.is_dir() and any(config.USER_DOC_DIR.glob("*.pdf")):

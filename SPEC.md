@@ -418,6 +418,15 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   opt-in. Trained on-the-fly from the baseline window (the MLP isn't JSON-persisted).
   If sklearn were unavailable, `ae_available()` is False and everything else is
   unchanged. Surfaced as `ae_anomalies`, rendered alongside the Mahalanobis result.
+- **Detector -> field-semantics labeling (the two-layer split).** The joint/AE
+  detectors point at RAW signal columns (the math: which points, which columns
+  drove the reconstruction/Mahalanobis error). The field-semantics JSON then
+  TRANSLATES each flagged column into a human meaning right on the finding:
+  `EngineCoolantTemperature` -> "coolant temperature (degC)". `ChatDeps._signal_
+  label` / `_label_top_signals` / `_label_drift_signals` do the join; render_drift's
+  `_sig()` shows "meaning [raw_name] (share%)". Undescribed columns fall back to the
+  raw name (no fabrication). So math and meaning stay decoupled — the detector never
+  needs to know what a signal means, and describing fields improves every finding.
 - **Efficiency / consumption-per-distance (cross-source)**: "average fuel
   consumption per 20km / per mile / per nautical mile" integrates the rate over
   the window (litres) and divides by the track distance travelled in that window

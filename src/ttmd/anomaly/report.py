@@ -9,6 +9,18 @@ Presentation rules (from the spec):
 from __future__ import annotations
 
 
+def _sig(s: dict) -> str:
+    """Format a flagged signal for the report. If the caller has attached a
+    field-semantics 'meaning' (raw column -> human meaning), show that with the
+    raw name in brackets; else just the raw name. Always includes the % share."""
+    share = f" ({s['share']*100:.0f}%)" if s.get("share") is not None else ""
+    meaning = s.get("meaning")
+    name = s.get("signal", "?")
+    if meaning and meaning != name:
+        return f"{meaning} [{name}]{share}"
+    return f"{name}{share}"
+
+
 def render_drift(result: dict) -> str:
     if result.get("error"):
         return result["error"]
@@ -88,8 +100,7 @@ def render_drift(result: dict) -> str:
                          "mode's normal envelope.")
         else:
             for f in findings[:6]:
-                sigs = ", ".join(f"{s['signal']} ({s['share']*100:.0f}%)"
-                                 for s in f.get("top_signals", [])[:3])
+                sigs = ", ".join(_sig(s) for s in f.get("top_signals", [])[:3])
                 lines.append(f"  - mode {f['regime']}: {f['flagged_fraction']*100:.1f}% "
                              f"of points unusual (confidence: {f['confidence']})"
                              + (f"; driven mainly by {sigs}" if sigs else "") + ".")
@@ -106,8 +117,7 @@ def render_drift(result: dict) -> str:
                          "normal manifold.")
         else:
             for f in findings[:6]:
-                sigs = ", ".join(f"{s['signal']} ({s['share']*100:.0f}%)"
-                                 for s in f.get("top_signals", [])[:3])
+                sigs = ", ".join(_sig(s) for s in f.get("top_signals", [])[:3])
                 lines.append(f"  - mode {f['regime']}: {f['flagged_fraction']*100:.1f}% "
                              f"of points unusual (confidence: {f['confidence']})"
                              + (f"; driven mainly by {sigs}" if sigs else "") + ".")

@@ -278,6 +278,11 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
   covariance ellipsoid can't fit; reconstruction error scores each point, per-feature
   error keeps the attribution. Opt-in because it trades the training-free character
   for nonlinear reach.
+- **Math finds it, your labels explain it:** the detectors point at raw signal
+  columns; the field-semantics JSON then translates each into a human meaning on the
+  finding ("coolant temperature (degC) [EngineCoolantTemperature] 60%"). The two are
+  decoupled — describing your fields makes every anomaly readable, and an undescribed
+  column just shows its raw name (never a guess).
 - **Ask "why?"** after an anomaly answer and it EXPLAINS the detected change —
   grounded in the structured findings (which couplings/steps moved), your
   expert-confirmed facts, and manual excerpts — offering what to check, never
