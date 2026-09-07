@@ -150,6 +150,16 @@ class ChatDeps:
                 narrowed = self._narrow_by_message(cands, message, word)
                 if len(narrowed) == 1:
                     return narrowed[0]
+                # CONSUMPTION guard: for a consumption/quantity question ("how much
+                # fuel", "what it consumes"), an ambiguous namesake like "fuel"
+                # (level/temperature/rate) means the RATE — a total-over-time only
+                # makes sense for the rate. Prefer the rate among the candidates
+                # instead of asking. Data-driven: rate set from field-semantics.
+                if self._is_consumption(message):
+                    rates = self._rate_signals(source)
+                    rate_hits = [c for c in (narrowed or cands) if c in rates]
+                    if len(rate_hits) == 1:
+                        return rate_hits[0]
                 raise NeedsClarification(
                     f"Which one did you mean — {', '.join(narrowed or cands)}?")
         # 2. resolve the (possibly LLM-narrowed) term
@@ -283,14 +293,22 @@ class ChatDeps:
         globs, label = resolve_window(source, self.vessel, days=days)
         return present_globs(globs), label
 
+    # (module helper _percentile_local defined at end of file)
     # words that mean "consumed over time" -> the RATE signal (integral), not the
     # ambiguous set of same-word namesakes (level/temperature).
-    _CONSUMPTION_WORDS = ("consumption", "consumed", "used", "burnt", "burned",
-                          "usage")
+    _CONSUMPTION_WORDS = ("consumption", "consumed", "consume", "consumes",
+                          "consuming", "used", "using", "burnt", "burned", "burn",
+                          "burns", "burning", "usage")
 
     def _is_consumption(self, message):
         low = (message or "").lower()
-        return any(re.search(rf"\b{w}\b", low) for w in self._CONSUMPTION_WORDS)
+        if any(re.search(rf"\b{w}\b", low) for w in self._CONSUMPTION_WORDS):
+            return True
+        # "how much fuel/gas/diesel ..." is a quantity total over a window, which
+        # for a rate signal means consumption — treat it as such so it resolves to
+        # the rate rather than asking level-vs-temperature. Data-agnostic: keys off
+        # the "how much <X>" quantity phrasing, not a hardcoded signal name.
+        return bool(re.search(r"\bhow much\b", low))
 
     def compute_value(self, source, message, params):
         days = params.get("days")
@@ -1004,10 +1022,16 @@ class ChatDeps:
         if win["start_dist_km"] > 5 or win["end_dist_km"] > 5:
             note = (f" (nearest track approach: {win['start_dist_km']} km to start, "
                     f"{win['end_dist_km']} km to end)")
-        return (f"{signal} used from ({from_lat:.4f}, {from_lon:.4f}) to "
-                f"({to_lat:.4f}, {to_lon:.4f}): {val}. "
-                f"Window {f} → {t} UTC ({dur_h:.1f} h), track ~{win['track_km']:.0f} km"
-                f" [from '{pos_src}' position, integrated on '{source}'].{note}")
+        out = (f"{signal} used from ({from_lat:.4f}, {from_lon:.4f}) to "
+               f"({to_lat:.4f}, {to_lon:.4f}): {val}. "
+               f"Window {f} → {t} UTC ({dur_h:.1f} h), track ~{win['track_km']:.0f} km"
+               f" [from '{pos_src}' position, integrated on '{source}'].{note}")
+        # compound "...and is that normal for the distance?" -> efficiency-vs-history
+        if self._wants_normal_check(message) and res.value is not None:
+            verdict = self._voyage_efficiency_norm(source, signal, unit)
+            if verdict:
+                out += "\n" + verdict
+        return out
 
     def _integrated_unit(self, rate_unit):
         """Unit of the time-INTEGRAL of a rate: strip a per-hour denominator.
@@ -1385,9 +1409,67 @@ class ChatDeps:
         import datetime as _dt
         f = _dt.datetime.utcfromtimestamp(leg["t_start"]).strftime("%Y-%m-%d %H:%M")
         t = _dt.datetime.utcfromtimestamp(leg["t_end"]).strftime("%Y-%m-%d %H:%M")
-        return (f"{signal} used on {win_label}: {val}. "
-                f"Window {f} -> {t} UTC ({leg['duration_h']:.1f} h), "
-                f"track ~{leg['distance_km']:.0f} km.")
+        out = (f"{signal} used on {win_label}: {val}. "
+               f"Window {f} -> {t} UTC ({leg['duration_h']:.1f} h), "
+               f"track ~{leg['distance_km']:.0f} km.")
+        # If the question ALSO asked whether that's normal for the distance, append
+        # an efficiency-vs-own-history verdict (per-distance consumption vs prior
+        # voyages). No baseline needed — the norm is the asset's own past legs.
+        if self._wants_normal_check(message) and res.value is not None:
+            verdict = self._voyage_efficiency_norm(source, signal, unit)
+            if verdict:
+                out += "\n" + verdict
+        return out
+
+    @staticmethod
+    def _wants_normal_check(message):
+        """True if the message asks whether a result is TYPICAL/normal/expected
+        (e.g. 'does it look normal', 'is that usual for the distance')."""
+        low = (message or "").lower()
+        return any(w in low for w in ("normal", "usual", "typical", "expected",
+                                      "as always", "compared to", "vs usual",
+                                      "abnormal", "unusual"))
+
+    def _voyage_efficiency_norm(self, source, signal, unit):
+        """Compare the MOST RECENT leg's per-distance consumption to the asset's
+        own prior legs. Returns a plain-language verdict, or None if there isn't
+        enough voyage history. Data-agnostic: fuel/km = (rate integrated over the
+        leg) / (leg distance); norm = median/p90 of prior legs. Reports the
+        observed comparison, never the cause; confidence by number of prior legs."""
+        import statistics
+        from ttmd.query import aggregate
+        legs = self._detect_legs()
+        if len(legs) < 3:                     # need a couple of priors + the current
+            return None
+        globs = present_globs([config.source_glob(source, self.vessel)])
+        per_km = []
+        for lg in legs:
+            if lg["distance_km"] <= 0:
+                per_km.append(None); continue
+            r = aggregate(globs, signal, "integral", "leg", unit=unit,
+                          t_range=(lg["t_start"], lg["t_end"]))
+            per_km.append((r.value / lg["distance_km"]) if r.value is not None else None)
+        cur = per_km[-1]
+        hist = [v for v in per_km[:-1] if v is not None]
+        if cur is None or len(hist) < 2:
+            return None
+        med = statistics.median(hist)
+        p90 = _percentile_local(hist, 90)
+        iunit = f"{unit}/km" if unit else "per km"
+        conf = "high" if len(hist) >= 10 else ("medium" if len(hist) >= 5 else "low")
+        ratio = cur / med if med else float("inf")
+        if cur > p90 and cur >= 1.25 * med:
+            verdict = (f"That's HIGHER than usual for the distance: {cur:.2f} {iunit} "
+                       f"vs a usual ~{med:.2f} (about {ratio:.1f}x the median of "
+                       f"{len(hist)} prior voyage(s)) — worth a look, though it could "
+                       f"be load/weather/route, not a fault.")
+        elif cur < 0.75 * med:
+            verdict = (f"That's LOWER than usual for the distance: {cur:.2f} {iunit} "
+                       f"vs a usual ~{med:.2f} — efficient this trip.")
+        else:
+            verdict = (f"That's about NORMAL for the distance: {cur:.2f} {iunit} vs a "
+                       f"usual ~{med:.2f} across {len(hist)} prior voyage(s).")
+        return f"Per-distance check (confidence: {conf}): {verdict}"
 
     def detect_anomaly(self, source, message):
         """Check whether `source` has DRIFTED from its known-good baseline.
@@ -1853,3 +1935,13 @@ class ChatDeps:
         self.kb.add_asset_fact(message, author="user")
         return ("Noted and saved — I'll use this in future reasoning. "
                 "[stored as expert-confirmed knowledge]")
+
+
+def _percentile_local(vals, p):
+    """Simple linear-interpolation percentile (no numpy dependency here)."""
+    if not vals:
+        return 0.0
+    s = sorted(vals)
+    k = (len(s) - 1) * (p / 100.0)
+    lo = int(k); hi = min(lo + 1, len(s) - 1)
+    return s[lo] + (s[hi] - s[lo]) * (k - lo)

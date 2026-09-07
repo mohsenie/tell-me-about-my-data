@@ -90,6 +90,58 @@ def test_scope_refuses_offdomain(fake, deps, kb_ship):
     assert reply == REFUSAL
 
 
+# ---------------- consumption resolution + voyage normality check ----------------
+def test_is_consumption_recognizes_phrasings(deps):
+    assert deps._is_consumption("how much fuel on the last voyage")
+    assert deps._is_consumption("what the engine usually consumes")
+    assert deps._is_consumption("fuel burn")
+    assert not deps._is_consumption("average engine speed")
+
+
+def test_consumption_guard_resolves_fuel_to_rate(deps, has_data):
+    """A consumption question resolves ambiguous 'fuel' to the RATE signal instead
+    of asking; a non-consumption 'fuel' question still asks."""
+    avail = deps.signals("engine")
+    if "EngineFuelRate" not in avail:
+        pytest.skip("no fuel rate on this data")
+    sig = deps._resolve_or_ask("fuel", "engine", avail,
+                               "how much fuel on the last voyage")
+    assert sig == "EngineFuelRate"
+    with pytest.raises(Exception):
+        deps._resolve_or_ask("fuel", "engine", avail, "what is the fuel reading now")
+
+
+def test_wants_normal_check_guard():
+    from ttmd.chat_deps import ChatDeps
+    assert ChatDeps._wants_normal_check("does it look normal for the same distance")
+    assert ChatDeps._wants_normal_check("is that usual?")
+    assert not ChatDeps._wants_normal_check("how much fuel on the last voyage")
+
+
+def test_voyage_efficiency_norm_verdict(deps, monkeypatch):
+    """The per-distance norm compares the last leg's fuel/km to prior legs and
+    returns normal/high/low. Uses stubbed legs + aggregate so it's deterministic
+    regardless of sample-data coverage."""
+    legs = [
+        {"from": "A", "to": "B", "t_start": 0, "t_end": 10, "distance_km": 100},
+        {"from": "B", "to": "C", "t_start": 20, "t_end": 30, "distance_km": 100},
+        {"from": "C", "to": "D", "t_start": 40, "t_end": 50, "distance_km": 100},
+    ]
+    monkeypatch.setattr(deps, "_detect_legs", lambda: legs)
+
+    class _R:  # fake aggregate result: fuel proportional to a per-leg value
+        def __init__(self, v): self.value = v
+    fuels = {(0, 10): 100.0, (20, 30): 110.0, (40, 50): 300.0}   # last leg 3x
+
+    def fake_aggregate(globs, signal, agg, label, unit=None, t_range=None):
+        return _R(fuels[t_range])
+    import ttmd.query as _q
+    monkeypatch.setattr(_q, "aggregate", fake_aggregate)
+
+    verdict = deps._voyage_efficiency_norm("engine", "EngineFuelRate", "L")
+    assert verdict is not None and "HIGHER than usual" in verdict
+
+
 # ---------------- signal labeling (detector -> field-semantics meaning) ----------
 def test_signal_label_translates_via_semantics(deps, kb_ship):
     """A raw signal column is translated to its field-semantics meaning; an

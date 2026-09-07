@@ -348,6 +348,26 @@ a lot of what decomposition would, so item 5 is a last resort.
 
 ---
 
+## P1 — Chat robustness (fixes from real usage)
+
+- [x] **Consumption resolution: "how much fuel" / "consumes" no longer asks
+      level-vs-temp.** _is_consumption now covers consume/consumes/burn/... AND
+      "how much <X>"; the generic resolver (_resolve_or_ask), for a consumption
+      question, resolves an ambiguous rate-namesake ("fuel") to the RATE signal
+      instead of asking (non-consumption "fuel reading" still asks). Fixed the
+      "Which one did you mean — EngineFuelRate, FuelLevel, FuelTemperature?" bug.
+- [x] **Compound "how much + is it normal?" answered in one turn.** The voyage
+      answer (both the coordinate path and the "last voyage" branch) appends a
+      per-distance normality verdict when the question asks (_wants_normal_check):
+      _voyage_efficiency_norm compares the latest leg's fuel/km to the MEDIAN/p90 of
+      prior legs (the asset's own history — NO baseline needed), reporting HIGHER /
+      LOWER / NORMAL with confidence by voyage count. Observed comparison, never
+      cause. Needs >=2 valid prior legs (thin sample data may return nothing).
+      TODO(next): general compound-question decomposition in the router is still not
+      done — this fix is scoped to the fuel-normality case, the common one.
+
+---
+
 ## P2 — LLM / interpretation
 
 - [x] **Cost/token logging** — DONE. provider.UsageMeter wraps any provider and
