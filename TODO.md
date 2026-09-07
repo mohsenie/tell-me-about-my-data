@@ -270,6 +270,51 @@ learn from the known-good window per regime, persist, score a new window.
 
 ---
 
+## P1 — Seasonality (compare like-season to like-season)
+
+PROBLEM: the baseline is ONE fixed known-good window. Detecting in a different
+season makes a legitimate seasonal difference read as "drift" — the system reports
+it honestly and refuses to assert cause, but it can't LABEL it seasonal. Regime
+segmentation already absorbs operating-mode seasonality (cold-start vs warm), and
+multi-timescale already separates slow drift from sudden breaks; this track closes
+the calendar-vs-single-baseline gap. Data-agnostic, deterministic, honest — no
+hardcoded calendar (match by operating CONTEXT, not by month).
+
+- [ ] **1. Seasonal baseline library (recommended first).** Allow MULTIPLE named
+      known-good baselines (operator still designates each as healthy — never
+      auto-invented). `build_baseline --label <name>`; baseline store keyed by
+      label. Nothing else about the detectors changes — they just receive the
+      chosen baseline.
+- [ ] **2. Auto-select the baseline by REGIME DISTRIBUTION similarity.** At detect
+      time, compute the window's regime fractions and pick the stored baseline whose
+      regime distribution is most similar (context match, not calendar). Report WHICH
+      baseline was chosen and HOW CLOSE the match is (confidence). Reuses the regime
+      fractions already in the fingerprint; no new heavy math, no deps.
+- [ ] **3. Poor-match honesty path.** If no stored baseline matches above a floor,
+      say so explicitly ("this period doesn't resemble any known-good baseline —
+      possibly a new season OR a real change") instead of forcing a bad comparison.
+- [ ] **4. (optional) Provisional auto-baseline for zero-setup.** Propose a baseline
+      from the most context-similar PRIOR period, clearly labeled provisional /
+      unconfirmed ("compared against a similar past period, not an operator-confirmed
+      healthy window"); one-step promote-to-confirmed (reuses the expert-confirm
+      pattern). Removes cold-start friction without breaking the "operator picks
+      healthy" invariant.
+- [ ] **5. (optional, later) Periodicity layer — only if regimes under-split.**
+      Start cheap: cyclic calendar features (hour/day/month as sin/cos) fed to regime
+      clustering so modes can split on time-of-cycle when the data supports it (still
+      unsupervised). Full seasonal decomposition (STL / periodic mean -> detect on
+      residuals) is deeper, adds a periodicity-estimation assumption, needs several
+      cycles of data, and complicates "which raw signal moved" explainability (label
+      residuals as "seasonally-adjusted"). RISK: decomposition can HIDE a fault that
+      aligns with a seasonal dip — only add with a concrete case where regimes fail.
+- [ ] **6. Surface multi-timescale year-over-year as a first-class report** once
+      multi-year data exists (period_key already supports granularity="year").
+
+NOTE: most of the value is in items 1-3 (baseline selection). Regimes already handle
+a lot of what decomposition would, so item 5 is a last resort.
+
+---
+
 ## P1 — Discovery quality (makes results trustworthy)
 
 - [x] **Partial / conditional dependence** — DONE. dependence.partial_correlation_
