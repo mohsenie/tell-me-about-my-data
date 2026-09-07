@@ -341,6 +341,19 @@ class Orchestrator:
 
         intent = next((i for i in INTENTS if i in raw_intent), "reasoning")
 
+        # DETERMINISTIC GUARD (compound trip+consumption): a question that pairs a
+        # TRIP word ("voyage/trip/leg") with a fuel/consumption/total word is a
+        # voyage-consumption question — even when the LLM calls it "ambiguous"
+        # because it also asks "is that normal?". Force the voyage intent: that path
+        # resolves fuel->the RATE signal (no level/temp ambiguity) AND appends the
+        # per-distance normality verdict. Fixes the compound question routing to the
+        # generic resolver (which asks "which fuel?"). Data-agnostic phrasing check.
+        _low = message.lower()
+        if (any(w in _low for w in ("voyage", "trip", "leg", "journey", "passage"))
+                and any(w in _low for w in ("fuel", "consum", "burn", "total",
+                                            "gas", "diesel", "how much"))):
+            intent = "voyage"
+
         # DETERMINISTIC GUARD: the value/describe_fields boundary on phrasing like
         # "normal frequency_x" is genuinely borderline and the LLM flips between
         # runs. If the message NAMES an exact signal column AND asks for a

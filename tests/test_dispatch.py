@@ -118,6 +118,28 @@ def test_wants_normal_check_guard():
     assert not ChatDeps._wants_normal_check("how much fuel on the last voyage")
 
 
+def test_compound_trip_consumption_routes_to_voyage(fake, deps, kb_ship, has_data):
+    """A compound 'fuel total for the last voyage + is it normal?' question routes
+    to voyage (rate-resolved), NOT the generic resolver that asks which fuel. The
+    router (fake) returns the verbose 'ambiguous' verdict that mentions voyage AND
+    anomaly — the deterministic guard must override it."""
+    ambiguous = ("ambiguous — this is both voyage (a consumed total) and anomaly "
+                 "(is it abnormal vs baseline)")
+    o, _ = _session(fake, deps, kb_ship, intent=ambiguous, params={})
+    # describe engine fuel fields so the voyage path can resolve the rate
+    kb_ship.set_field_semantics("engine", [
+        {"field": "EngineFuelRate", "description": "fuel rate", "unit": "L/h",
+         "role": "none", "confidence": "high", "aggregation": "integral"},
+        {"field": "FuelLevel", "description": "tank level", "unit": "%",
+         "role": "none", "confidence": "high", "aggregation": "avg"},
+    ])
+    reply = o.send("the fuel total for the last voyage. is it within normal range "
+                   "for the similar distance travelled before?")
+    # did NOT ask to disambiguate fuel; answered the voyage total (or a clean
+    # 'no completed voyage' message) — never the "Which one did you mean" prompt.
+    assert "Which one did you mean" not in reply
+
+
 def test_voyage_efficiency_norm_verdict(deps, monkeypatch):
     """The per-distance norm compares the last leg's fuel/km to prior legs and
     returns normal/high/low. Uses stubbed legs + aggregate so it's deterministic

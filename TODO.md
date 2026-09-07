@@ -363,8 +363,19 @@ a lot of what decomposition would, so item 5 is a last resort.
       prior legs (the asset's own history — NO baseline needed), reporting HIGHER /
       LOWER / NORMAL with confidence by voyage count. Observed comparison, never
       cause. Needs >=2 valid prior legs (thin sample data may return nothing).
-      TODO(next): general compound-question decomposition in the router is still not
-      done — this fix is scoped to the fuel-normality case, the common one.
+- [x] **Compound trip+consumption question routed correctly.** ROOT CAUSE (found via
+      live-router trace): the router classifies "fuel total for the last voyage + is
+      it normal?" as "ambiguous" but its VERBOSE reply names both voyage AND anomaly,
+      so the orchestrator's ambiguous-guard is skipped and `next(i in INTENTS...)`
+      picks the wrong single intent -> generic resolver asks "which fuel?". FIX: a
+      deterministic pre-classification guard in orchestrator.send — if the message
+      pairs a TRIP word (voyage/trip/leg/journey/passage) with a fuel/consumption/
+      total word, force intent="voyage". The voyage path resolves fuel->rate (no
+      ambiguity) and appends the per-distance normality verdict. Verified against the
+      LIVE Bedrock router: the exact question now answers the last-voyage fuel total.
+      Tested with a FakeProvider returning the verbose "ambiguous" verdict.
+      TODO(next): GENERAL compound-question decomposition (answer each sub-question)
+      is still not done — these two fixes cover the common fuel/voyage cases.
 
 ---
 
