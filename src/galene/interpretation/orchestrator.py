@@ -403,19 +403,22 @@ class Orchestrator:
 
         intent = next((i for i in INTENTS if i in raw_intent), "reasoning")
 
-        # DETERMINISTIC GUARD (unsupported): "how many nearby ships/vessels per
-        # <distance>" asks to COUNT nearby vessels bucketed along the track — a
-        # capability we don't have (nearby = vessels near a point at a TIME;
-        # efficiency = a numeric signal per distance). Without this guard the
-        # "per km" phrasing pulls it into efficiency and fabricates a FUEL answer.
-        # Be honest that it's not supported rather than answer a different question.
+        # DETERMINISTIC GUARD: "how many nearby <entities> per <distance>" asks to
+        # COUNT nearby entities bucketed along the track — routed to the real
+        # per-distance capability. ASSET-NEUTRAL: the trigger is proximity
+        # ("nearby"/"around"/"near me") + per-distance + a count, NOT a hardcoded
+        # 'ship'/'vessel' word (a truck fleet asks 'other trucks/vehicles nearby').
+        # Without this the "per km" phrasing pulls it into efficiency and fabricates
+        # a fuel answer.
         import re as _re0
         _low0 = message.lower()
-        _about_nearby = any(w in _low0 for w in ("nearby", "ships near", "vessels near",
-                                                 "other ships", "other vessels",
-                                                 "ships around", "vessels around"))
+        _about_nearby = ("nearby" in _low0 or "near me" in _low0
+                         or "near us" in _low0 or "around us" in _low0
+                         or _re0.search(r"\b(other|around)\b", _low0) and
+                         _re0.search(r"\b(ship|vessel|truck|vehicle|craft|unit|"
+                                     r"boat|car|aircraft|plane|entit)", _low0))
         _per_distance = bool(_re0.search(
-            r"(per|every|each)\s*\d*\s*(km|kilomet|mile|nm|nautical)", _low0))
+            r"(per|every|each)\s*\d*\s*(km|kilomet|mile|nm|nautical|m\b)", _low0))
         _counting = any(w in _low0 for w in ("how many", "number of", "count", "how much"))
         if _about_nearby and _per_distance and _counting:
             reply = self._frame("nearby", message,

@@ -920,12 +920,16 @@ class ChatDeps:
         from galene.query import nearby_new_per_distance
         import re as _re
         # sources: own position (single-entity) + the other-vessel feed
+        # asset-neutral noun for the nearby entities: 'other <asset_type>s'
+        # (other ships / other trucks / ...), generic 'units' if unknown.
+        at = (self.asset_type or "").strip().lower()
+        noun = f"other {at}s" if at and at not in ("asset", "") else "nearby units"
         own_src = self._own_position_source()
         other_src = self._multi_entity_source()
         if not own_src or not other_src:
-            return ("I need both our own position track and a feed of OTHER vessels "
-                    "to count nearby traffic per distance, but this vessel doesn't "
-                    "have both. (Own-position + a multi-vessel AIS-style feed.)")
+            return (f"I need both our own position track and a feed of {noun} to "
+                    "count nearby traffic per distance, but this asset doesn't have "
+                    "both (own-position source + a multi-entity position feed).")
         olat, olon = self._latlon_cols(own_src)
         xlat, xlon = self._latlon_cols(other_src)
         id_col = self._id_col(other_src)
@@ -948,12 +952,12 @@ class ChatDeps:
                     "over the voyage window).")
         where = (f"the last voyage ({leg['from']} -> {leg['to']}, "
                  f"~{leg['distance_km']:.0f} km)" if leg else "the available track")
-        lines = [f"New nearby vessels per {bucket_km:.0f} km on {where} "
+        lines = [f"New {noun} nearby per {bucket_km:.0f} km on {where} "
                  f"(within {res['radius_km']:.0f} km):"]
         for b in buckets:
             lines.append(f"  - {b['km_start']:.0f}-{b['km_end']:.0f} km: "
                          f"{b['new_count']} new")
-        lines.append(f"Total distinct vessels encountered: {res['total_distinct']}.")
+        lines.append(f"Total distinct {noun} encountered: {res['total_distinct']}.")
         lines.append(res["note"])
         return "\n".join(lines)
 

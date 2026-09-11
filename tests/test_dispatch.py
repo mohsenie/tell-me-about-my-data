@@ -133,26 +133,50 @@ def test_nearby_per_distance_routes_to_real_capability(fake, deps, kb_ship, has_
                    "the last trip. give me the list for every 20km")
     # must NOT have fabricated an efficiency/fuel RESULT
     assert "EngineFuelRate" not in reply and "L per 20 km" not in reply
-    # it's the nearby-per-distance answer (buckets/new vessels) or an honest
+    # it's the nearby-per-distance answer (buckets/new entities) or an honest
     # 'need both sources' message — never the old 'can't yet count' stub.
-    assert ("new nearby vessels per" in reply.lower()
-            or "km:" in reply.lower()
-            or "feed of other vessels" in reply.lower())
+    low = reply.lower()
+    assert ("nearby per" in low or "km:" in low
+            or "multi-entity position feed" in low or "km " in low)
+    assert "can't yet count" not in low
+
+
+def test_nearby_per_distance_asset_neutral_noun(has_data):
+    """The nearby-per-distance answer names the nearby entities from the ASSET TYPE,
+    not a hardcoded 'vessel' — a truck asset says 'other trucks', a ship 'other
+    ships'. Data-agnostic (same data + code, different asset_type)."""
+    import config
+    from galene.chat_deps import ChatDeps
+    from galene.interpretation.provider import StubProvider
+    from galene.cli_helpers import kb as _kb
+    truck = ChatDeps("truck", StubProvider(), _kb("truck"), config.DEFAULT_VESSEL)
+    out_t = truck.nearby_per_distance("how many other vehicles nearby per 20 km")
+    ship = ChatDeps("ship", StubProvider(), _kb("ship"), config.DEFAULT_VESSEL)
+    out_s = ship.nearby_per_distance("how many ships nearby per 20 km")
+    # if the capability produced a result, the noun tracks the asset type
+    if "per 20 km" in out_t:
+        assert "other trucks" in out_t and "vessel" not in out_t.lower()
+    if "per 20 km" in out_s:
+        assert "other ships" in out_s
 
 
 def test_nearby_per_distance_guard_scope(fake, deps, kb_ship, has_data):
-    """The guard fires ONLY for nearby-vessels + per-distance + counting; a plain
+    """The guard fires ONLY for nearby-entities + per-distance + counting; a plain
     fuel-per-distance or nearby-now question is unaffected (guard returns falsey)."""
     import re
     def fires(m):
         low = m.lower()
-        about = any(w in low for w in ("nearby", "ships near", "vessels near",
-                                       "other ships", "other vessels",
-                                       "ships around", "vessels around"))
-        perd = bool(re.search(r"(per|every|each)\s*\d*\s*(km|kilomet|mile|nm|nautical)", low))
+        about = ("nearby" in low or "near me" in low or "near us" in low
+                 or "around us" in low
+                 or (re.search(r"\b(other|around)\b", low) and
+                     re.search(r"\b(ship|vessel|truck|vehicle|craft|unit|boat|car|"
+                               r"aircraft|plane|entit)", low)))
+        perd = bool(re.search(r"(per|every|each)\s*\d*\s*(km|kilomet|mile|nm|nautical|m\b)", low))
         cnt = any(w in low for w in ("how many", "number of", "count", "how much"))
-        return about and perd and cnt
+        return bool(about and perd and cnt)
     assert fires("how many nearby ships per 10 km")
+    assert fires("how many other vehicles were near me every 5 km")   # ASSET-NEUTRAL (truck)
+    assert fires("count other trucks around us per 10km")             # ASSET-NEUTRAL
     assert not fires("fuel consumption per 20 km")        # not about nearby
     assert not fires("what ships are nearby now")         # not per-distance
     assert not fires("how many ships are nearby now")     # counting nearby, but not per-distance

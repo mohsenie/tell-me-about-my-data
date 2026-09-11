@@ -291,21 +291,23 @@ def nearby_new_per_distance(own_globs: list[str], other_globs: list[str],
                             bucket_km: float, radius_km: float = 10.0,
                             t_range: tuple[float, float] | None = None,
                             name_col: str | None = None) -> dict:
-    """DISTINCT-NEW nearby vessels per `bucket_km` of travel along the own track.
+    """DISTINCT-NEW nearby ENTITIES per `bucket_km` of travel along the own track.
 
-    Walks the own track in time order (via distance_segments) into distance
-    buckets; for each bucket samples the own position at the bucket's start/mid/end
-    instants, finds OTHER vessels within radius_km (ships_nearby) at those instants,
+    Asset-neutral: 'entities' are whatever the multi-entity feed tracks (other
+    ships, trucks, vehicles, aircraft, ...). Walks the own track in time order (via
+    distance_segments) into distance buckets; for each bucket samples the own
+    position at the bucket's start/mid/end instants, finds OTHER entities within
+    radius_km (ships_nearby — a generic point-proximity query) at those instants,
     unions their ids, and counts per bucket only ids NOT seen in an EARLIER bucket
-    (cumulative-unique — 'new' traffic). Data-agnostic: all column names are
-    parameters. APPROXIMATE: sampled at a few instants per bucket, so a vessel
-    present only briefly between samples can be missed.
+    (cumulative-unique — 'new'). Data-agnostic: all column names are parameters.
+    APPROXIMATE: sampled at a few instants per bucket, so an entity present only
+    briefly between samples can be missed.
 
     Returns {buckets:[{km_start, km_end, new_count, names}], total_distinct,
     bucket_km, radius_km, note}."""
     if not own_globs or not other_globs:
         return {"buckets": [], "total_distinct": 0, "bucket_km": bucket_km,
-                "radius_km": radius_km, "note": "no track / no other-vessel data."}
+                "radius_km": radius_km, "note": "no track / no other-entity data."}
     segs = distance_segments(own_globs, own_lat_col, own_lon_col, bucket_km, t_range)
     if not segs:
         return {"buckets": [], "total_distinct": 0, "bucket_km": bucket_km,
@@ -343,8 +345,8 @@ def nearby_new_per_distance(own_globs: list[str], other_globs: list[str],
         "total_distinct": len(seen),
         "bucket_km": bucket_km,
         "radius_km": radius_km,
-        "note": ("Approximate — nearby vessels are counted at a few sampled instants "
-                 "per bucket, so a vessel present only briefly between samples may be "
+        "note": ("Approximate — nearby entities are counted at a few sampled instants "
+                 "per bucket, so one present only briefly between samples may be "
                  "missed. 'New' = first seen in that bucket (not counted earlier)."),
     }
 
