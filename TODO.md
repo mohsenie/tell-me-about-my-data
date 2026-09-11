@@ -1,4 +1,4 @@
-# TODO — talk-to-my-data (Relational Fingerprinting)
+# TODO — Galene (Relational Fingerprinting)
 
 Outstanding work and known issues. See SPEC.md for the method + invariants.
 Ordered roughly by priority within each section.

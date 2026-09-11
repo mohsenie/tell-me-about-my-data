@@ -1,6 +1,7 @@
-# Relational Fingerprinting — System Specification
+# Galene — Relational Fingerprinting — System Specification
 
-> **Product:** talk-to-my-data, powered by Relational Fingerprinting.
+> **Product:** Galene — *"Ask the ocean. Find the shore."* — powered by Relational
+> Fingerprinting.
 > **Method (technical):** regime-conditional structural-drift anomaly detection,
 > learned from raw data with zero prior knowledge.
 > Living spec — resume work in a fresh context from this file.
@@ -528,8 +529,9 @@ Remaining highlights:
 
 ## 8. Product framing
 
-**"talk-to-my-data" = ask your data what changed, without ever telling it what the
-data is.** The differentiator is zero-knowledge onboarding: no manual tagging, no
+**Galene ("Ask the ocean. Find the shore.") = ask your data what changed, without
+ever telling it what the data is.** The differentiator is zero-knowledge
+onboarding: no manual tagging, no
 rule-writing, no schema mapping to start finding anomalies. Point it at the lake,
 it learns the asset's normal relational structure per operating mode, and it tells
 you when that structure drifts. Deep dependence (nonlinear + cross-source) catches

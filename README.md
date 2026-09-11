@@ -1,4 +1,6 @@
-# talk-to-my-data — Relational Fingerprinting
+# Galene — Relational Fingerprinting
+
+> **Galene: Ask the ocean. Find the shore.**
 
 Zero-knowledge anomaly discovery, querying, and data intelligence over asset
 telemetry — through a single chat.

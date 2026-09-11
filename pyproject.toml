@@ -1,7 +1,7 @@
 [project]
-name = "ttmd"
+name = "galene"
 version = "0.1.0"
-description = "Talk-to-my-data: agentic natural-language querying over vessel telemetry."
+description = "Galene: Ask the ocean. Find the shore. — zero-knowledge relational-fingerprinting anomaly discovery over asset telemetry, through chat."
 requires-python = ">=3.10"
 dependencies = [
     "duckdb>=1.0",
@@ -16,6 +16,10 @@ dependencies = [
 ]
 
 [project.scripts]
+# `galene` is the brand command; `ttmd` kept as an alias so existing usage/docs and
+# the internal package name (import ttmd) keep working — renaming the import package
+# would ripple through every module, env var (TTMD_*), and test.
+galene = "ttmd.cli:main"
 ttmd = "ttmd.cli:main"
 
 [build-system]
