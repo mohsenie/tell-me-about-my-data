@@ -252,6 +252,22 @@ class Orchestrator:
     def _hist(self) -> str:
         return "\n".join(f"{h['role']}: {h['text']}" for h in self.history[-6:])
 
+    def _wants_all_sources(self, message: str) -> bool:
+        """True if a broad, whole-vessel question ('my data', 'all/each/every
+        source', 'across sources', 'anywhere') that should sweep EVERY source
+        rather than the single active one — UNLESS a specific source is named.
+        Shared by summarize / capabilities / regimes / anomaly for consistency."""
+        low = (message or "").lower()
+        broad = any(w in low for w in (
+            "all source", "all data source", "each source", "every source",
+            "all sources", "across sources", "per source", "my data", "the data",
+            "any data", "anywhere", "all of them", "everything", "any source",
+            "whole vessel", "entire vessel", "overall", "overview"))
+        if not broad:
+            return False
+        named = any(s.lower() in low for s in self.deps.all_sources())
+        return not named
+
     @staticmethod
     def _is_why_followup(message: str) -> bool:
         """A short causal follow-up ('why?', 'what could cause that', 'how come',
@@ -436,6 +452,8 @@ class Orchestrator:
         d = self.deps
         src = self._active   # routed source for this turn (may differ from home)
         if intent == "capabilities":
+            if self._wants_all_sources(message):
+                return d.capabilities_all()
             return d.capabilities(src)
 
         if intent == "describe_fields":
@@ -532,21 +550,17 @@ class Orchestrator:
             # can designate (which period was healthy). So unlike discovery, we
             # can't auto-run it — we ask for the window if none is set.
             # BROAD scope ("my data", "all/each/every source", "anywhere") -> sweep
-            # every source; a specifically-named source stays single. Deterministic.
-            low = message.lower()
-            broad = any(w in low for w in ("all source", "all data source",
-                                           "each source", "every source", "all sources",
-                                           "across sources", "my data", "the data",
-                                           "any data", "anywhere", "all of them",
-                                           "everything", "any source"))
-            named = any(s.lower() in low for s in d.all_sources())
-            if broad and not named:
+            # every source; a specifically-named source stays single.
+            if self._wants_all_sources(message):
                 return d.detect_anomaly_all(message)
             return d.detect_anomaly(src, message)
 
         if intent == "summarize":
             # Open-ended overview. Auto-runs discovery inside _notable_facts;
             # folds in drift only if a baseline exists. No baseline required.
+            # Broad "overview of my data / all sources" -> summarize EVERY source.
+            if self._wants_all_sources(message):
+                return d.summarize_all(message)
             notice = ""
             if (not d.has_field_semantics(src)
                     and src not in self._described_attempted):
@@ -555,12 +569,8 @@ class Orchestrator:
             return notice + d.summarize(src, message)
 
         if intent == "regimes":
-            # "for ALL sources / each source / every source" -> describe every one,
-            # not just the active source. Deterministic phrasing check.
-            low = message.lower()
-            if any(w in low for w in ("all source", "all data source", "each source",
-                                      "every source", "all sources", "per source",
-                                      "across sources", "all of them", "everything")):
+            # "for ALL sources / each / every source" -> describe every one.
+            if self._wants_all_sources(message):
                 return d.describe_regimes_all(message)
             # Operating modes come from discovery -> auto-run it if missing.
             notice = ""

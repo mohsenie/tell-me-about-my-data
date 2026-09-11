@@ -200,6 +200,17 @@ class ChatDeps:
         caps = list_capabilities({source: config.source_glob(source, self.vessel)})
         return describe_capabilities(caps)
 
+    def capabilities_all(self):
+        """What you can query across EVERY source on the vessel (for 'what's in all
+        my data' / 'what can I ask about across sources'). list_capabilities already
+        accepts a multi-source map, so this just passes all of them."""
+        sources = self.all_sources()
+        if not sources:
+            return "No data sources found for this vessel."
+        caps = list_capabilities({s: config.source_glob(s, self.vessel)
+                                  for s in sources})
+        return describe_capabilities(caps)
+
     def run_discovery(self, source):
         globs = present_globs([config.source_glob(source, self.vessel)])
         if not globs:
@@ -1859,6 +1870,22 @@ class ChatDeps:
             return out or det
         except Exception:
             return det
+
+    def summarize_all(self, message):
+        """Whole-vessel overview: summarize EVERY source (for 'what's notable in my
+        data' / 'give me an overview'). Leads with the vessel-level behavioral
+        flag ONCE, then a short per-source summary. Auto-discovers each as needed."""
+        sources = self.all_sources()
+        if not sources:
+            return "No data sources found for this vessel."
+        parts = []
+        beh = self.behavioral_flags(sources[0])       # vessel-level, once
+        if beh:
+            parts.append("BEHAVIOR (vs the asset's own history):\n"
+                         + "\n".join("  - " + f for f in beh))
+        for src in sources:
+            parts.append(f"[{src}]\n" + self.summarize(src, message))
+        return "\n\n".join(parts)
 
     def _summary_fallback(self, facts):
         """Deterministic template summary (no LLM) — also the offline path."""

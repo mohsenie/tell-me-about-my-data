@@ -118,6 +118,35 @@ def test_regimes_all_routing_guard():
                                       "all sources", "per source", "across sources"))
 
 
+# ---------------- broad-scope routing (shared _wants_all_sources) ----------------
+def test_wants_all_sources_shared_guard(fake, deps, kb_ship):
+    o, _ = _session(fake, deps, kb_ship)
+    f = o._wants_all_sources
+    assert f("give me an overview")
+    assert f("what is notable in my data")
+    assert f("capabilities across all sources")
+    # a NAMED source suppresses the broad sweep
+    assert not f("summarize the engine")
+    assert not f("overview of the engine")
+    # a plain unscoped ask is not broad
+    assert not f("what can I ask about")
+
+
+def test_capabilities_all_covers_every_source(deps, has_data):
+    out = deps.capabilities_all()
+    for s in deps.all_sources():
+        assert s in out
+
+
+def test_summarize_all_covers_sources_behavioral_once(deps, has_data):
+    out = deps.summarize_all("give me an overview")
+    srcs = deps.all_sources()
+    assert len(srcs) >= 2
+    for s in srcs:
+        assert f"[{s}]" in out                      # each source has a section
+    assert out.count("stayed in one location") <= 1  # behavioral once, not per-source
+
+
 # ---------------- anomalies across all sources ----------------
 def test_detect_anomaly_all_covers_sources_once_behavioral(deps, has_data):
     """'anomalies in all data sources' checks every source, with the vessel-level
