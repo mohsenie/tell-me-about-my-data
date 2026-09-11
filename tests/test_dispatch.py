@@ -148,17 +148,31 @@ def test_summarize_all_covers_sources_behavioral_once(deps, has_data):
 
 
 # ---------------- anomalies across all sources ----------------
-def test_detect_anomaly_all_covers_sources_once_behavioral(deps, has_data):
-    """'anomalies in all data sources' checks every source, with the vessel-level
-    behavioral block reported at most once (not repeated per source)."""
-    out = deps.detect_anomaly_all("are there anomalies in all data sources")
+def test_detect_anomaly_all_is_high_level_rollup(deps, has_data):
+    """'anomalies in all data sources' returns a SHORT roll-up, not the full
+    per-edge dump: a 'Checked N sources' header, one line per source, behavioral
+    once, and a pointer to per-source detail — NOT raw edge tables."""
+    out = deps.detect_anomaly_all("is there any anomaly in my data")
     srcs = deps.all_sources()
     assert len(srcs) >= 2
+    assert out.startswith("Checked ")                 # roll-up header
+    assert out.count("stayed in one location") <= 1   # behavioral once
+    # the raw per-edge detail tables must NOT be in the roll-up
+    assert "threshold" not in out and "Δ+" not in out and "Δ-" not in out
+    # every source is accounted for (either flagged, clean, or no-baseline line)
     for s in srcs:
-        assert f"'{s}'" in out                      # each source addressed
-    assert "PER-SOURCE" in out
-    # behavioral flag (if any) appears at most once, not per-source
-    assert out.count("stayed in one location") <= 1
+        assert s in out
+
+
+def test_anomaly_detail_expands_one_source(deps, has_data):
+    """After the roll-up, anomaly_detail returns the FULL report for a source that
+    had a baseline (from the cache)."""
+    deps.detect_anomaly_all("any anomaly in my data")
+    cached = list(getattr(deps, "_anomaly_details", {}).keys())
+    if not cached:
+        pytest.skip("no source has a baseline in this run")
+    detail = deps.anomaly_detail(cached[0])
+    assert "Drift check for" in detail                 # the full render, not the roll-up
 
 
 def test_anomaly_broad_scope_routing_guard(deps):

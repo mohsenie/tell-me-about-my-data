@@ -1575,25 +1575,97 @@ class ChatDeps:
         self._label_drift_signals(source, result)
         return render_drift(result)
 
+    @staticmethod
+    def _drift_headline(source, result):
+        """One-line, high-level verdict for a source's drift result — counts, not
+        raw edge tables. e.g. 'engine: relationship drift in 4 of 5 modes, a usage
+        shift, and a sequencing change'. Returns (has_finding, line)."""
+        l1 = result.get("layer1_structure_drift", [])
+        l2 = result.get("layer2_regime_events", [])
+        lt = (result.get("layer2_transition_events") or {}).get("findings", [])
+        lj = [f for f in (result.get("joint_anomalies") or {}).get("findings", [])
+              if f.get("n_flagged", 0) > 0]
+        bits = []
+        if l1:
+            n_modes = len(l1)
+            n_edges = sum(len(f.get("changed_edges", [])) for f in l1)
+            bits.append(f"relationship drift in {n_modes} mode(s) ({n_edges} coupling change(s))")
+        if lj:
+            bits.append(f"joint anomalies in {len(lj)} mode(s)")
+        if lt:
+            bits.append("a sequencing change")
+        if l2:
+            bits.append(f"{len(l2)} usage shift(s)")
+        if not bits:
+            return False, f"{source}: no structural change vs its baseline."
+        return True, f"{source}: " + ", ".join(bits) + "."
+
     def detect_anomaly_all(self, message):
-        """Anomaly check across EVERY source on the vessel. The BEHAVIORAL check is
-        vessel-level (position track) so it's reported ONCE; the baseline-drift
-        check runs per source. Fixes 'anomalies in ALL data sources' only looking
-        at the active source."""
+        """Anomaly check across EVERY source — a HIGH-LEVEL roll-up, not a dump.
+        Leads with the vessel-level behavioral flag (once), then ONE line per
+        source (drift headline / no-baseline note / clean). The full per-source
+        reports are stashed so a follow-up ('show <source> detail' / 'details')
+        can expand them."""
+        from galene.anomaly import (has_baseline, load_baseline, detect_drift)
         sources = self.all_sources()
         if not sources:
             return "No data sources found for this vessel."
-        # behavioral (vessel-level) — once, no baseline needed
-        behavioral = self.behavioral_flags(sources[0])
-        parts = []
-        if behavioral:
-            parts.append("BEHAVIOR (vs the asset's own history):\n"
-                         + "\n".join("  - " + f for f in behavioral))
-        # per-source baseline-drift
-        parts.append("PER-SOURCE relationship/structure check:")
+        behavioral = self.behavioral_flags(sources[0])   # vessel-level, once
+        flagged, clean, no_base = [], [], []
+        details = {}                                      # source -> full render
         for src in sources:
-            parts.append(self._drift_for_source(src))
-        return "\n\n".join(parts)
+            dates = config.available_dates(src, self.vessel)
+            if not dates:
+                continue
+            if not has_baseline(src):
+                no_base.append(src)
+                continue
+            baseline = load_baseline(src)
+            base_dates = set(baseline.get("dates", []))
+            recent = [d for d in dates if d not in base_dates] or dates[-2:]
+            result = detect_drift(src, recent, self.vessel, baseline, with_mi=False)
+            self._label_drift_signals(src, result)
+            has, line = self._drift_headline(src, result)
+            (flagged if has else clean).append(line)
+            from galene.anomaly.report import render_drift
+            details[src] = render_drift(result)
+            self._last_drift = {"source": src, "result": result,
+                                "behavioral": behavioral}
+        # stash the per-source detail for a follow-up "show <source> detail"
+        self._anomaly_details = details
+
+        L = [f"Checked {len(sources)} data source(s)."]
+        if behavioral:
+            L.append("\nBehavior (asset's own history):")
+            L += ["  - " + f for f in behavioral]
+        if flagged:
+            L.append("\nWorth a look:")
+            L += ["  - " + x for x in flagged]
+        if clean:
+            L.append("\nLooked normal vs baseline: "
+                     + ", ".join(x.split(":")[0] for x in clean) + ".")
+        if no_base:
+            L.append("\nNo baseline set (can't fault-check these yet): "
+                     + ", ".join(no_base) + ".")
+            L.append("  Set one with: galene baseline <source> --from <date> --to <date>")
+        if not behavioral and not flagged:
+            L.append("\nNothing notable: no behavioral change and no relationship "
+                     "drift where a baseline exists.")
+        if details:
+            L.append("\n(Say \"show <source> detail\" — e.g. \"show "
+                     f"{next(iter(details))} detail\" — for the full breakdown.)")
+        L.append("\nObserved changes only — a change can be a fault OR a legitimate "
+                 "operational change; the data can't say which.")
+        return "\n".join(L)
+
+    def anomaly_detail(self, source):
+        """Full drift report for one source from the last all-sources sweep (the
+        'show <source> detail' follow-up). Falls back to a fresh single-source
+        check if we don't have it cached."""
+        cache = getattr(self, "_anomaly_details", {}) or {}
+        if source in cache:
+            return cache[source]
+        return self.detect_anomaly(source, "")
 
     def explain_drift(self, message):
         """Explain the LAST detected drift/behavioral change (a chat 'why?' follow-
