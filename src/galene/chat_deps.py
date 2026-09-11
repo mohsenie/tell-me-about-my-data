@@ -903,6 +903,60 @@ class ChatDeps:
             lines.append(f"  - {f['id']}{nm}: {f['distance_km']} km")
         return "\n".join(lines)
 
+    def _multi_entity_source(self):
+        """The multi-entity position source (lat/lon + a varying identifier — a
+        feed of OTHER vessels). Data-driven; None if there isn't one."""
+        for s in self.all_sources():
+            lat, lon = self._latlon_cols(s)
+            if lat and lon and self._id_col(s):
+                return s
+        return None
+
+    def nearby_per_distance(self, message):
+        """DISTINCT-NEW nearby vessels per N km of travel along the last trip.
+        Composes own track + the multi-entity feed; buckets by the distance the
+        user named ('every 20km' / 'per 10km'); counts vessels first seen in each
+        bucket. Reports the observed count, honest about the sampling approximation."""
+        from galene.query import nearby_new_per_distance
+        import re as _re
+        # sources: own position (single-entity) + the other-vessel feed
+        own_src = self._own_position_source()
+        other_src = self._multi_entity_source()
+        if not own_src or not other_src:
+            return ("I need both our own position track and a feed of OTHER vessels "
+                    "to count nearby traffic per distance, but this vessel doesn't "
+                    "have both. (Own-position + a multi-vessel AIS-style feed.)")
+        olat, olon = self._latlon_cols(own_src)
+        xlat, xlon = self._latlon_cols(other_src)
+        id_col = self._id_col(other_src)
+        name_col = self._name_col(other_src)
+        # bucket size from the message: "every 20km" / "per 10 km" (default 20)
+        m = _re.search(r"(?:per|every|each)\s*(\d+)\s*(km|kilomet|mile|nm|nautical)",
+                       message.lower())
+        bucket_km = float(m.group(1)) if m else 20.0
+        # window: the last detected voyage/leg (else the whole track)
+        leg = self._last_leg()
+        t_range = (leg["t_start"], leg["t_end"]) if leg else None
+        own_globs = present_globs([config.source_glob(own_src, self.vessel)])
+        other_globs = present_globs([config.source_glob(other_src, self.vessel)])
+        res = nearby_new_per_distance(own_globs, other_globs, olat, olon, xlat, xlon,
+                                      id_col, bucket_km=bucket_km, radius_km=10.0,
+                                      t_range=t_range, name_col=name_col)
+        buckets = res.get("buckets", [])
+        if not buckets:
+            return ("Couldn't walk a track for the last trip (need position fixes "
+                    "over the voyage window).")
+        where = (f"the last voyage ({leg['from']} -> {leg['to']}, "
+                 f"~{leg['distance_km']:.0f} km)" if leg else "the available track")
+        lines = [f"New nearby vessels per {bucket_km:.0f} km on {where} "
+                 f"(within {res['radius_km']:.0f} km):"]
+        for b in buckets:
+            lines.append(f"  - {b['km_start']:.0f}-{b['km_end']:.0f} km: "
+                         f"{b['new_count']} new")
+        lines.append(f"Total distinct vessels encountered: {res['total_distinct']}.")
+        lines.append(res["note"])
+        return "\n".join(lines)
+
     def distance_between(self, source, message):
         """Distance between TWO named other entities (e.g. 'JORO' and 'HARRIS') at
         a time. Resolves each name in the multi-entity source, gets each one's

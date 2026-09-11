@@ -99,9 +99,10 @@ narrow the window if you want an underway-only figure.)
 
 Intents the chat routes to (deterministic compute, LLM only routes/reasons):
 capabilities · field descriptions · values · plots · correlations · reasoning ·
-corrections · position · nearby · voyage · efficiency (fuel per km, value or a
-per-distance chart) · distance (how far travelled) · between (distance between two
-named vessels) · geo (signal by location) · anomaly · summarize (what's notable) ·
+corrections · position · nearby (vessels near a point at a time; also NEW nearby
+vessels per N km of travel along a voyage) · voyage · efficiency (fuel per km,
+value or a per-distance chart) · distance (how far travelled) · between (distance
+between two named vessels) · geo (signal by location) · anomaly · summarize ·
 regimes (operating modes / usage patterns). Off-domain questions are refused.
 
 **Behavioral-norm alerts:** beyond sensor-fault drift, it watches how the asset is
@@ -129,6 +130,11 @@ A relationship question spanning TWO sources ("relation between vibration and
 pitch") uses fused cross-source discovery. "Is vibration higher in some
 locations?" maps a signal (or a concept family like all vibration axes) over
 geographic cells of the track and reports where it's high/low (sea-state by area).
+"How many new ships were nearby per 10 km of the last voyage?" walks the trip
+track, buckets it by distance, and counts DISTINCT-new vessels first seen in each
+bucket (within ~10 km), so you see where traffic was densest — honest that it's
+sampled per bucket (a brief passer-by between samples can be missed).
+
 Per-distance charts work for ANY
 signal, not just fuel: "plot velocity_z every 10km" averages it per distance
 segment (a rate like fuel is integrated instead). And "X per Y" generalizes

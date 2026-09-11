@@ -122,19 +122,22 @@ def test_regimes_all_routing_guard():
                                       "all sources", "per source", "across sources"))
 
 
-# ---------------- unsupported: nearby-vessels-per-distance ----------------
-def test_nearby_per_distance_is_honest_not_fuel(fake, deps, kb_ship, has_data):
-    """'how many nearby ships per 10km' is an unsupported capability — it must say
-    so, NOT fall into efficiency and fabricate a fuel-per-distance answer."""
-    # router returns the verbose 'ambiguous' verdict (mentions nearby/efficiency/plot)
+# ---------------- nearby-vessels-per-distance (distinct-new) ----------------
+def test_nearby_per_distance_routes_to_real_capability(fake, deps, kb_ship, has_data):
+    """'how many nearby ships per 10km' now routes to the real per-distance
+    capability (NOT efficiency/fuel). It reports new-vessels-per-bucket, and
+    NEVER fabricates a fuel/efficiency number."""
     ambiguous = "ambiguous — mixes nearby, efficiency (per km), and plot (a list)"
     o, _ = _session(fake, deps, kb_ship, intent=ambiguous, params={})
     reply = o.send("how many new ships nearby were seen for every 10km of travel in "
                    "the last trip. give me the list for every 20km")
-    assert "can't yet count" in reply.lower()
-    # must NOT have fabricated an efficiency/fuel RESULT (a computed number)
-    assert "EngineFuelRate" not in reply and "travelled" not in reply
-    assert "L per 20 km" not in reply
+    # must NOT have fabricated an efficiency/fuel RESULT
+    assert "EngineFuelRate" not in reply and "L per 20 km" not in reply
+    # it's the nearby-per-distance answer (buckets/new vessels) or an honest
+    # 'need both sources' message — never the old 'can't yet count' stub.
+    assert ("new nearby vessels per" in reply.lower()
+            or "km:" in reply.lower()
+            or "feed of other vessels" in reply.lower())
 
 
 def test_nearby_per_distance_guard_scope(fake, deps, kb_ship, has_data):

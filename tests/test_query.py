@@ -14,7 +14,7 @@ from galene.query import (
     aggregate, list_capabilities, describe_capabilities,
     current_position, ships_nearby, voyage_window, track_distance_km,
     distance_segments, entity_position_at, haversine_km, signal_by_location,
-    nearest_place, place_label, detect_legs)
+    nearest_place, place_label, detect_legs, nearby_new_per_distance)
 from galene.query.timeparse import parse_instant
 
 
@@ -216,6 +216,60 @@ def test_known_places_loads_from_yaml(has_data):
     if not places:
         pytest.skip("no places configured for this vessel")
     assert all("name" in p and "lat" in p and "lon" in p for p in places)
+
+
+# ---------------- nearby-new vessels per distance ----------------
+def _write_parquet(path, rows, cols):
+    import pyarrow as pa, pyarrow.parquet as pq
+    table = pa.table({c: [r[i] for r in rows] for i, c in enumerate(cols)})
+    pq.write_table(table, path)
+
+
+def test_nearby_new_per_distance_distinct_counting(tmp_path):
+    """Distinct-NEW counting: a vessel seen in an early bucket is NOT recounted in
+    a later bucket; per-bucket counts reflect first-sighting only. Uses tiny
+    synthetic own + other parquet so it's fully deterministic (no live data)."""
+    # Own track: due-east along the equator, one fix per ~11 km step (0.1 deg lon
+    # ~ 11.1 km), t = 0,100,200,... so distance_segments buckets cleanly.
+    own_rows, t = [], 0
+    for i in range(20):                       # 0.0 .. 1.9 deg lon (~211 km)
+        own_rows.append((float(t), 0.0, round(i * 0.1, 4)))
+        t += 100
+    own_p = tmp_path / "own.parquet"
+    _write_parquet(own_p, own_rows, ["timestamp", "latitude", "longitude"])
+
+    # Other vessels: V1 near lon 0.0 (early), V2 near lon 0.0 too (same early spot,
+    # distinct id), V3 near lon 1.5 (late). Each reports across all timestamps so
+    # it's 'present' whenever we're near it. Placed AT own positions so distance≈0.
+    # V1/V2 at lon 0.0 (own start, t=0 is a bucket sample point); V3 at lon 1.6,
+    # which is where own is at t=1600 — the midpoint sample of the 150-200km
+    # bucket — so V3 lands exactly on a sampled instant (deterministic).
+    other_rows = []
+    for tt in range(0, 2000, 100):
+        other_rows.append((float(tt), 0.0, 0.0, "V1"))
+        other_rows.append((float(tt), 0.001, 0.0, "V2"))
+        other_rows.append((float(tt), 0.0, 1.6, "V3"))
+    other_p = tmp_path / "other.parquet"
+    _write_parquet(other_p, other_rows,
+                   ["timestamp", "latitude", "longitude", "mmsi"])
+
+    res = nearby_new_per_distance(
+        [str(own_p)], [str(other_p)], "latitude", "longitude",
+        "latitude", "longitude", "mmsi", bucket_km=50.0, radius_km=5.0)
+    # V1+V2 are first seen in the first bucket (near lon 0); V3 near lon 1.5 (~167km)
+    # is first seen in a later bucket. Total distinct across the trip = 3.
+    assert res["total_distinct"] == 3
+    counts = [b["new_count"] for b in res["buckets"]]
+    assert counts[0] == 2                      # V1, V2 both first-seen up front
+    assert sum(counts) == 3                    # no double-counting (distinct-new)
+    assert res["radius_km"] == 5.0 and res["bucket_km"] == 50.0
+    assert "Approximate" in res["note"]
+
+
+def test_nearby_new_per_distance_empty_track():
+    res = nearby_new_per_distance([], [], "lat", "lon", "lat", "lon", "id",
+                                  bucket_km=20.0)
+    assert res["buckets"] == [] and res["total_distinct"] == 0
 
 
 # ---------------- voyage / leg auto-detection ----------------

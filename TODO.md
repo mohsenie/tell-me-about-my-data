@@ -148,6 +148,16 @@ REMAINING:
 - [x] **Spatially-windowed plots**: "plot velocity_z from <coord> to <coord> every
       30 min" -> a trend plot restricted to the voyage window (aggregated_series
       t_range), distinct from a voyage consumption total.
+- [x] **New nearby vessels per N km of travel (distinct-new)**: "how many new ships
+      nearby per 10 km on the last voyage" — spatial.nearby_new_per_distance walks
+      the own track (distance_segments buckets), samples own position per bucket,
+      finds OTHER vessels within radius (ships_nearby, default 10 km), and counts
+      per bucket only ids first seen there (cumulative-unique). ChatDeps.nearby_per_
+      distance wires own + multi-entity source + last-leg window + bucket-km from the
+      message; orchestrator's nearby+per-distance+count guard now routes to it
+      (previously an honest 'not supported' stub). APPROXIMATE (sampled per bucket) —
+      stated in the output. Verified live on the 96 km last voyage; tested on
+      synthetic parquet (distinct-new correctness + empty-input).
 - [x] **Per-distance charts for ANY signal (not just rates)**: "plot velocity_z
       every 10km" AVERAGES the signal per distance segment; a rate (fuel) is
       INTEGRATED per segment. efficiency() + _efficiency_plot() take bin_agg;

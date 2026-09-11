@@ -271,6 +271,84 @@ def distance_segments(globs: list[str], lat_col: str, lon_col: str,
     return segs
 
 
+def _own_pos_at(con, own_src, lat_col, lon_col, at_epoch, tolerance_s=1800):
+    """Own position nearest `at_epoch` (within tolerance) — (lat, lon) or None."""
+    row = con.execute(f'''
+        SELECT "{lat_col}", "{lon_col}"
+        FROM {own_src}
+        WHERE "{lat_col}" IS NOT NULL AND "{lon_col}" IS NOT NULL
+          AND abs(timestamp - {at_epoch}) <= {tolerance_s}
+        ORDER BY abs(timestamp - {at_epoch}) ASC LIMIT 1
+    ''').fetchone()
+    if not row or row[0] is None:
+        return None
+    return float(row[0]), float(row[1])
+
+
+def nearby_new_per_distance(own_globs: list[str], other_globs: list[str],
+                            own_lat_col: str, own_lon_col: str,
+                            other_lat_col: str, other_lon_col: str, id_col: str,
+                            bucket_km: float, radius_km: float = 10.0,
+                            t_range: tuple[float, float] | None = None,
+                            name_col: str | None = None) -> dict:
+    """DISTINCT-NEW nearby vessels per `bucket_km` of travel along the own track.
+
+    Walks the own track in time order (via distance_segments) into distance
+    buckets; for each bucket samples the own position at the bucket's start/mid/end
+    instants, finds OTHER vessels within radius_km (ships_nearby) at those instants,
+    unions their ids, and counts per bucket only ids NOT seen in an EARLIER bucket
+    (cumulative-unique — 'new' traffic). Data-agnostic: all column names are
+    parameters. APPROXIMATE: sampled at a few instants per bucket, so a vessel
+    present only briefly between samples can be missed.
+
+    Returns {buckets:[{km_start, km_end, new_count, names}], total_distinct,
+    bucket_km, radius_km, note}."""
+    if not own_globs or not other_globs:
+        return {"buckets": [], "total_distinct": 0, "bucket_km": bucket_km,
+                "radius_km": radius_km, "note": "no track / no other-vessel data."}
+    segs = distance_segments(own_globs, own_lat_col, own_lon_col, bucket_km, t_range)
+    if not segs:
+        return {"buckets": [], "total_distinct": 0, "bucket_km": bucket_km,
+                "radius_km": radius_km, "note": "no track to walk."}
+    con = duckdb.connect()
+    own_src = _src(own_globs)
+    seen: set = set()               # vessel ids seen in ANY earlier/this bucket
+    buckets = []
+    for seg in segs:
+        # sample instants across the bucket's time window (start, mid, end)
+        t0, t1 = seg["t_start"], seg["t_end"]
+        instants = sorted({t0, (t0 + t1) / 2.0, t1})
+        new_here = {}               # id -> name, first seen in THIS bucket
+        for at in instants:
+            own = _own_pos_at(con, own_src, own_lat_col, own_lon_col, at)
+            if own is None:
+                continue
+            found = ships_nearby(other_globs, at, own[0], own[1],
+                                 other_lat_col, other_lon_col, id_col,
+                                 radius_km=radius_km, name_col=name_col)
+            for f in found:
+                vid = f["id"]
+                if vid not in seen and vid not in new_here:
+                    new_here[vid] = f.get("name")
+        for vid in new_here:
+            seen.add(vid)
+        buckets.append({
+            "km_start": seg["km_start"], "km_end": seg["km_end"],
+            "new_count": len(new_here),
+            "names": [n for n in new_here.values() if n][:10],
+        })
+    con.close()
+    return {
+        "buckets": buckets,
+        "total_distinct": len(seen),
+        "bucket_km": bucket_km,
+        "radius_km": radius_km,
+        "note": ("Approximate — nearby vessels are counted at a few sampled instants "
+                 "per bucket, so a vessel present only briefly between samples may be "
+                 "missed. 'New' = first seen in that bucket (not counted earlier)."),
+    }
+
+
 def entity_position_at(globs, lat_col, lon_col, id_col, name_col, term,
                        at_epoch, tolerance_s=3600):
     """Position of a named/identified entity closest to `at_epoch`.
