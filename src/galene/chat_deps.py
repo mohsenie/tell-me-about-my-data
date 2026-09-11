@@ -1777,8 +1777,10 @@ class ChatDeps:
                 desc.append(f"{'high' if z > 0 else 'low'} {sig} ({cen[sig]:.4g})")
             lines.append(f"  - Mode {m['label']}: {m.get('fraction', 0)*100:.0f}% of "
                          f"the time — " + (", ".join(desc) if desc else "mixed") + ".")
-        lines.append("(Modes are data-derived usage patterns; the labels/meaning "
-                     "(idle, cruise, ...) are yours to assign.)")
+        lines.append("(Modes are data-derived usage patterns; their labels/meaning "
+                     "(idle, cruise, load, ...) are yours to assign. The %s are the "
+                     "split of the RECORDED data across modes — NOT engine on/off or "
+                     "utilization time.)")
         return "\n".join(lines)
 
     def describe_regimes_all(self, message):
