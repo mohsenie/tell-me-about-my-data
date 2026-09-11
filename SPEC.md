@@ -234,15 +234,15 @@ a `FakeProvider` (tests/conftest.py) drives dispatch tests without Bedrock.
 
 ### Running the chat + persona modes
 ```
-galene chat                      # default vessel, analyst mode
-galene chat vessel-001 --mode operator      # business/ops: short, plain, no jargon
-galene chat vessel-001 --mode technician    # engineer: signals/couplings + what to check
-galene chat vessel-001 --mode analyst       # DEFAULT: full detail with numbers
-galene chat vessel-001 --source engine --mode operator
+galene chat                      # default vessel, general mode (plain, business)
+galene chat vessel-001 --mode general       # DEFAULT: business/ops, short, plain, no jargon
+galene chat vessel-001 --mode analyst       # which signals/couplings changed + what to check
+galene chat vessel-001 --mode expert        # full raw detail with numbers (verbatim)
+galene chat vessel-001 --source engine --mode expert
 ```
 Mode is set with `--mode` at launch OR changed mid-chat by saying "switch to
-business/technician/analyst mode" (synonyms: business/ops/manager/captain->operator,
-tech/engineer/maintenance->technician, data/expert/raw->analyst). Presentation
+general/analyst/expert mode" (synonyms: business/ops/manager/captain/operator->general,
+tech/engineer/maintenance->analyst, data/detailed/raw/full->expert). Presentation
 ONLY — identical numbers/analysis across modes; only INTERPRETIVE answers
 (summarize / anomaly / regimes / reasoning / relationship) are reframed; plain
 values/plots are the same in every mode. Implemented in orchestrator.py
@@ -281,15 +281,15 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   operator's "is it behaving normally"). Verified on the real track (8 stops, a
   24h ongoing stop flagged at 37x normal). Additive; daily-distance / speed-profile
   behaviors fit the same shape next.
-- **Presentation modes (operator / technician / analyst)**: `galene chat --mode
-  operator` (or "switch to business mode" mid-chat) reframes the INTERPRETIVE
-  answers (summarize / anomaly / regimes / reasoning) for the audience — operator:
+- **Presentation modes (general / analyst / expert)**: `galene chat --mode
+  general` (default; or "switch to expert mode" mid-chat) reframes the INTERPRETIVE
+  answers (summarize / anomaly / regimes / reasoning) for the audience — general:
   short, plain, no jargon, regime->usage wording ("staying in one place longer
   than usual"); the framing is CONVERSATIONAL — it sees recent history, answers
   the SPECIFIC question asked, and refers back to (doesn't repeat) facts already
   stated, so a session reads as a dialogue, not standalone reports;
-  than usual", "a route it hasn't taken"); technician: which signals/couplings +
-  what to check; analyst (default): full detail, unchanged (no LLM reframing).
+  analyst: which signals/couplings + what to check; expert: full detail, unchanged
+  (no LLM reframing — the raw numbers verbatim).
   Presentation ONLY — the numbers/analysis are identical across modes; a plain
   value/plot answer is the same in every mode. Verified same drift, three framings.
 - **Operating modes / usage patterns (regimes)**: "list usage patterns", "what
@@ -494,7 +494,7 @@ positional / nearby / distance / between; coordinate-based voyage fuel
 signal-by-location (geo); summarize (what's-notable) + regimes (usage patterns);
 baseline + drift detector (two layers, persisted regime model, chat `anomaly`);
 BEHAVIORAL-norm detector (dwell-time; "stayed longer than usual", no baseline);
-PRESENTATION MODES (operator/technician/analyst); asset-type/protocol from
+PRESENTATION MODES (general/analyst/expert); asset-type/protocol from
 sources.yaml. Full deterministic test suite (46 intent cases + routing/voyage/
 anomaly/timeparse/resolution/modes checks) green. Scale-tested to a month (~14M
 rows/source): query ops sub-second to ~1s, discovery flat (row-capped), only

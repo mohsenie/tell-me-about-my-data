@@ -560,8 +560,8 @@ def run_resolution():
 
 def run_modes():
     """Deterministic presentation-mode checks (no LLM): mode normalization,
-    mid-chat switch detection, and that analyst mode passes interpretive replies
-    through unchanged (framing is presentation-only, never for analyst)."""
+    mid-chat switch detection, and that EXPERT mode passes interpretive replies
+    through unchanged (framing is presentation-only, never for expert)."""
     from galene.interpretation.orchestrator import (
         _norm_mode, _detect_mode_switch, Orchestrator)
     import config
@@ -571,9 +571,11 @@ def run_modes():
 
     print("\n== presentation modes ==")
     fail = 0
-    norm_cases = [("business", "operator"), ("ops", "operator"), ("captain", "operator"),
-                  ("engineer", "technician"), ("tech", "technician"),
-                  ("data", "analyst"), ("", "analyst"), ("operator", "operator")]
+    norm_cases = [("business", "general"), ("ops", "general"), ("captain", "general"),
+                  ("operator", "general"),
+                  ("engineer", "analyst"), ("tech", "analyst"), ("technician", "analyst"),
+                  ("data", "expert"), ("raw", "expert"), ("detailed", "expert"),
+                  ("", "general"), ("general", "general"), ("expert", "expert")]
     for raw, exp in norm_cases:
         ok = _norm_mode(raw) == exp
         fail += 0 if ok else 1
@@ -581,9 +583,9 @@ def run_modes():
             print(f"  FAIL  _norm_mode({raw!r}) -> {_norm_mode(raw)} (exp {exp})")
     print(f"  {'OK ' if fail == 0 else 'FAIL'}  mode normalization ({len(norm_cases)} cases)")
 
-    sw_cases = [("switch to business mode", "operator"),
-                ("use technician view", "technician"),
-                ("explain like I'm a data analyst", "analyst"),
+    sw_cases = [("switch to expert mode", "expert"),
+                ("use general view", "general"),
+                ("explain like an analyst", "analyst"),
                 ("what is the average speed", None)]
     sfail = 0
     for msg, exp in sw_cases:
@@ -595,14 +597,14 @@ def run_modes():
     fail += sfail
     print(f"  {'OK ' if sfail == 0 else 'FAIL'}  mode-switch detection ({len(sw_cases)} cases)")
 
-    # analyst mode leaves an interpretive reply unchanged (no reframing)
+    # expert mode leaves an interpretive reply unchanged (no reframing)
     deps = ChatDeps("ship", get_provider(), kb("ship"), config.DEFAULT_VESSEL)
-    o = Orchestrator("engine", "ship", get_provider(), kb("ship"), deps, mode="analyst")
+    o = Orchestrator("engine", "ship", get_provider(), kb("ship"), deps, mode="expert")
     raw_reply = "regime 0: EngineSpeed ~ FuelTemperature strengthened (0.25 -> 0.75)"
     framed = o._frame("anomaly", "any issues?", raw_reply)
     ok = framed == raw_reply
     fail += 0 if ok else 1
-    print(f"  {'OK ' if ok else 'FAIL'}  analyst mode leaves interpretive reply unchanged")
+    print(f"  {'OK ' if ok else 'FAIL'}  expert mode leaves interpretive reply unchanged")
     return fail
 
 

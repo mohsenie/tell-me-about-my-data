@@ -29,22 +29,27 @@ The chat tailors HOW it explains things to your audience (the numbers/analysis a
 identical across modes — only the wording and level of detail change):
 
 ```bash
-galene chat --mode operator     # business/operations: short, plain, no jargon
+galene chat --mode general      # DEFAULT: business/operations — short, plain, no jargon
                               #   e.g. "the ship is staying in one place longer than usual"
-galene chat --mode technician   # engineer: which signals/couplings changed + what to check
-galene chat --mode analyst      # data analyst (DEFAULT): full detail with the numbers
+galene chat --mode analyst      # which signals/couplings changed + what to check
+galene chat --mode expert       # full raw detail: the numbers verbatim
 
-galene chat vessel-001 --mode operator          # combine with a vessel
-galene chat vessel-001 --source engine --mode technician
+galene chat vessel-001 --mode general           # combine with a vessel
+galene chat vessel-001 --source engine --mode expert
 ```
 
-You can also switch mid-conversation — just say **"switch to business mode"**,
-**"use technician view"**, or **"explain like a data analyst"**. Accepted mode
-words (and their synonyms): `operator` (business, operations, ops, manager,
-captain, exec), `technician` (tech, engineer, maintenance, mechanic), `analyst`
-(data, analysis, detailed, expert, raw). Modes only reshape the INTERPRETIVE
-answers (what's-notable, anomaly, regimes, reasoning); a plain value or plot is
-the same in every mode.
+You can also switch mid-conversation — just say **"switch to expert mode"**,
+**"use analyst view"**, or **"explain like a general/business user"**. The three
+modes (and their synonyms):
+- **general** (DEFAULT) — plain, business/operations wording, no jargon
+  (aliases: business, operations, ops, manager, captain, exec, operator, plain).
+- **analyst** — concise + concrete: which signals/couplings changed, what to check
+  (aliases: technician, tech, engineer, maintenance, mechanic).
+- **expert** — full raw detail, verbatim, no reframing
+  (aliases: data, detailed, raw, full).
+
+Modes only reshape the INTERPRETIVE answers (what's-notable, anomaly, regimes,
+reasoning); a plain value or plot is the same in every mode.
 
 The chat is **vessel-scoped**: you just name the vessel (or nothing), and every
 question is **routed automatically to whichever source can answer it** — you
@@ -105,11 +110,11 @@ has stayed in one location ~24h, about 37x its usual stay." Surfaced first when 
 ask "is there anything to worry about". Needs no baseline (the norm is the asset's
 own past); it reports the change, never the cause.
 
-**Presentation modes:** `galene chat --mode operator|technician|analyst` (or "switch
-to business mode" mid-chat) tailors HOW answers are explained — operator gets
+**Presentation modes:** `galene chat --mode general|analyst|expert` (or "switch to
+expert mode" mid-chat) tailors HOW answers are explained — general (default) gives
 short plain-language framing ("the ship is staying in one place longer than
-usual"), technician gets component/action detail, analyst (default) gets the full
-numbers. Same underlying analysis; only the wording/detail changes.
+usual"), analyst gives which-signals/what-to-check detail, expert gives the full
+raw numbers verbatim. Same underlying analysis; only the wording/detail changes.
 
 Ask "what is notable in my engine data" / "give me an overview" for a short
 prioritized summary — it folds in drift if you've set a baseline, else summarizes

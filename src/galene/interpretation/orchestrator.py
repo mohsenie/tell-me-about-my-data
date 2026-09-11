@@ -126,21 +126,34 @@ Ongoing conversation:
 Message: {message}
 Intent:"""
 
-MODES = ("operator", "technician", "analyst")
+MODES = ("general", "analyst", "expert")
 
 
 def _norm_mode(m):
-    """Normalize a mode name/synonym to one of MODES. Default: analyst."""
+    """Normalize a mode name/synonym to one of MODES. Default: general.
+
+    Three modes:
+      general  — plain-language, business/operations framing, no jargon (DEFAULT).
+      analyst  — concise + concrete: which signals/couplings changed, what to check.
+      expert   — full raw detail, verbatim (no LLM reframing; the numbers as-is).
+    """
     m = (m or "").strip().lower()
-    alias = {"business": "operator", "operations": "operator", "ops": "operator",
-             "manager": "operator", "captain": "operator", "exec": "operator",
-             "tech": "technician", "engineer": "technician", "maintenance": "technician",
-             "mechanic": "technician",
-             "data": "analyst", "analysis": "analyst", "detailed": "analyst",
-             "expert": "analyst", "raw": "analyst"}
+    alias = {
+        # general (plain / business / operations)
+        "business": "general", "operations": "general", "ops": "general",
+        "manager": "general", "captain": "general", "exec": "general",
+        "operator": "general", "plain": "general", "simple": "general",
+        "basic": "general",
+        # analyst (technician / engineer / mid-detail)
+        "technician": "analyst", "tech": "analyst", "engineer": "analyst",
+        "maintenance": "analyst", "mechanic": "analyst", "analysis": "analyst",
+        # expert (full raw detail)
+        "data": "expert", "detailed": "expert", "detail": "expert",
+        "raw": "expert", "full": "expert", "everything": "expert",
+    }
     if m in MODES:
         return m
-    return alias.get(m, "analyst")
+    return alias.get(m, "general")
 
 
 def _detect_mode_switch(message):
@@ -155,28 +168,30 @@ def _detect_mode_switch(message):
         m = _norm_mode(token)
         # only accept if the token itself was a known mode/alias (not the default
         # fallback firing on an unrelated word)
-        if token in MODES or token in {"business", "operations", "ops", "manager",
-                                       "captain", "exec", "tech", "engineer",
-                                       "maintenance", "mechanic", "data", "analysis",
-                                       "detailed", "expert", "raw"}:
+        if token in MODES or token in {
+                "business", "operations", "ops", "manager", "captain", "exec",
+                "operator", "plain", "simple", "basic",
+                "technician", "tech", "engineer", "maintenance", "mechanic", "analysis",
+                "data", "detailed", "detail", "raw", "full", "everything"}:
             return m
     return None
 
 
 _MODE_PERSONA = {
-    "operator": (
-        "a BUSINESS/OPERATIONS user who does NOT know sensor/statistics jargon. "
-        "Be SHORT (1-3 sentences). Translate technical findings into operational "
-        "meaning: an operating-mode/regime change -> how the asset is being USED "
-        "(e.g. 'spending more time stationary', 'taking a route it hasn't before', "
-        "'staying in one place longer than usual'); a relationship/structure drift "
-        "-> 'something in how it's behaving changed, worth a look'. NEVER use the "
-        "words regime, dcor, correlation, edge, coefficient, threshold. Lead with "
-        "whether there's anything to worry about."),
-    "technician": (
-        "a TECHNICIAN/ENGINEER. Be concise but concrete: name the specific signals "
-        "and couplings that changed and in which operating mode, and suggest what "
-        "to CHECK. Keep the actionable detail, drop raw statistics tables."),
+    "general": (
+        "a GENERAL business/operations user who does NOT know sensor/statistics "
+        "jargon. Be SHORT (1-3 sentences). Translate technical findings into "
+        "operational meaning: an operating-mode/regime change -> how the asset is "
+        "being USED (e.g. 'spending more time stationary', 'taking a route it "
+        "hasn't before', 'staying in one place longer than usual'); a relationship/"
+        "structure drift -> 'something in how it's behaving changed, worth a look'. "
+        "NEVER use the words regime, dcor, correlation, edge, coefficient, "
+        "threshold. Lead with whether there's anything to worry about."),
+    "analyst": (
+        "a TECHNICAL ANALYST / ENGINEER. Be concise but concrete: name the specific "
+        "signals and couplings that changed and in which operating mode, and suggest "
+        "what to CHECK. Keep the actionable detail, drop raw statistics tables."),
+    # 'expert' has no persona entry: it's the verbatim full-detail passthrough.
 }
 _FRAME_SYSTEM = (
     "You are continuing a CONVERSATION with {persona}\n"
@@ -236,7 +251,7 @@ class Orchestrator:
     testable and decoupled from the CLI."""
 
     def __init__(self, source: str, asset_type: str, provider: LLMProvider,
-                 kb: KnowledgeBase, deps, mode: str = "analyst"):
+                 kb: KnowledgeBase, deps, mode: str = "general"):
         self.source = source      # default/home source the chat started on
         self._active = source     # source used for the CURRENT turn (routing)
         self.asset_type = asset_type
@@ -316,8 +331,11 @@ class Orchestrator:
         sw = _detect_mode_switch(message)
         if sw and sw != self.mode:
             self.mode = sw
+            _desc = {"general": "short, plain, business-focused",
+                     "analyst": "concise + concrete: which signals changed, what to check",
+                     "expert": "full detail with the raw numbers"}[sw]
             reply = (f"Switched to {sw} mode — I'll tailor how I explain things "
-                     f"({'short, plain, business-focused' if sw == 'operator' else 'component/action-focused' if sw == 'technician' else 'full detail with the numbers'}). The underlying analysis is unchanged.")
+                     f"({_desc}). The underlying analysis is unchanged.")
             self.history.append({"role": "user", "text": message})
             self.history.append({"role": "assistant", "text": reply})
             return reply
@@ -449,7 +467,7 @@ class Orchestrator:
         technician = which signals/couplings + likely component/action; analyst =
         unchanged. Presentation only — the input facts/numbers are not altered,
         the LLM just re-expresses them for the audience."""
-        if self.mode == "analyst" or intent not in self._INTERPRETIVE:
+        if self.mode == "expert" or intent not in self._INTERPRETIVE:
             return reply
         if not reply or reply.strip().startswith("I don't have a known-good"):
             return reply   # don't reframe the baseline-setup prompt

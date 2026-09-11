@@ -604,10 +604,10 @@ def main(argv: list[str] | None = None) -> None:
     ch.add_argument("--asset-type", default=None, help="asset type (else from sources.yaml)")
     ch.add_argument("--source", default=None,
                     help="optional home source to start on (else auto-picked)")
-    ch.add_argument("--mode", default="analyst",
-                    help="presentation mode: operator (business, plain) / technician "
-                         "(component-focused) / analyst (full detail, default). "
-                         "Change mid-chat with 'switch to <mode> mode'.")
+    ch.add_argument("--mode", default="general",
+                    help="presentation mode: general (plain, business — DEFAULT) / "
+                         "analyst (which signals changed + what to check) / expert "
+                         "(full raw detail). Change mid-chat with 'switch to <mode> mode'.")
     ch.add_argument("--usage", action="store_true",
                     help="track LLM token usage + estimated cost (type 'usage' "
                          "mid-chat, and a summary prints on exit)")

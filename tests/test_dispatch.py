@@ -12,7 +12,7 @@ import config
 from galene.interpretation.orchestrator import Orchestrator
 
 
-def _session(fake, deps, kb_ship, home="engine", mode="analyst", **seed):
+def _session(fake, deps, kb_ship, home="engine", mode="expert", **seed):
     prov = fake(**seed)
     o = Orchestrator(home, "ship", prov, kb_ship, deps, mode=mode)
     # ensure the deps use the SAME fake provider (deps was built with the stub)
@@ -70,14 +70,18 @@ def test_efficiency_per_distance(fake, deps, kb_ship, has_data):
 
 
 def test_mode_switch_message(fake, deps, kb_ship, has_data):
+    # session starts in expert (test default); switching to a DIFFERENT mode
+    # produces the switch confirmation.
     o, _ = _session(fake, deps, kb_ship, intent="smalltalk", params={})
-    reply = o.send("switch to business mode")
-    assert o.mode == "operator" and "operator" in reply.lower()
+    reply = o.send("switch to general mode")
+    assert o.mode == "general" and "general" in reply.lower()
+    reply = o.send("switch to expert mode")
+    assert o.mode == "expert" and "expert" in reply.lower()
 
 
-def test_analyst_mode_no_reframe(fake, deps, kb_ship, has_data):
-    # analyst mode: interpretive replies pass through _frame unchanged
-    o, _ = _session(fake, deps, kb_ship, mode="analyst", intent="smalltalk", params={})
+def test_expert_mode_no_reframe(fake, deps, kb_ship, has_data):
+    # expert mode: interpretive replies pass through _frame unchanged (verbatim)
+    o, _ = _session(fake, deps, kb_ship, mode="expert", intent="smalltalk", params={})
     raw = "regime 0: EngineSpeed ~ FuelTemperature strengthened (0.25 -> 0.75)"
     assert o._frame("anomaly", "any issues?", raw) == raw
 
