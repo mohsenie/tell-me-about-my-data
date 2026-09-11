@@ -55,7 +55,7 @@ Philosophy: **structure first (automatic), meaning second (human-validated).**
 | `relationships.py` | `build_graph()` / `build_per_regime_graphs()` — the graph |
 | `loader.py` | thin numeric-data loader for a source |
 
-Run: `ttmd discover <source>` (e.g. `ttmd discover engine`) ->
+Run: `galene discover <source>` (e.g. `galene discover engine`) ->
 `artifacts/discovery_<source>.json` with regimes + per-regime graphs.
 
 ---
@@ -64,7 +64,7 @@ Run: `ttmd discover <source>` (e.g. `ttmd discover engine`) ->
 
 Discovery is the foundation the other layers build on:
 
-- **Feeds interpretation** (`ttmd interpret` / `chat`): the LLM reasons about the
+- **Feeds interpretation** (`galene interpret` / `chat`): the LLM reasons about the
   discovered relationships, grounded in the knowledge base + user docs.
 - **Feeds anomaly detection** (planned): per-regime baseline graphs are what a
   live window is compared against — anomaly = deviation from the SAME-regime

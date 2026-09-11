@@ -10,12 +10,12 @@ import calendar
 import pytest
 
 import config
-from ttmd.query import (
+from galene.query import (
     aggregate, list_capabilities, describe_capabilities,
     current_position, ships_nearby, voyage_window, track_distance_km,
     distance_segments, entity_position_at, haversine_km, signal_by_location,
     nearest_place, place_label, detect_legs)
-from ttmd.query.timeparse import parse_instant
+from galene.query.timeparse import parse_instant
 
 
 # ---------------- compute ----------------
@@ -194,7 +194,7 @@ def test_detect_legs_wellformed(pos_source, globs):
 
 
 def test_is_last_trip_guard():
-    from ttmd.chat_deps import ChatDeps
+    from galene.chat_deps import ChatDeps
     assert ChatDeps._is_last_trip("how much fuel on the last voyage")
     assert ChatDeps._is_last_trip("the most recent trip")
     assert not ChatDeps._is_last_trip("average engine speed")

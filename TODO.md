@@ -6,7 +6,7 @@ Ordered roughly by priority within each section.
 ## TESTS
 Functional pytest suite (deterministic, no live LLM needed): `.venv/bin/python -m
 pytest tests/` — 61 pass, 1 skip (the LLM intent-classification case; run it with
-`TTMD_LLM=bedrock python -m pytest tests/`).
+`GALENE_LLM=bedrock python -m pytest tests/`).
 
 ### WORKING CONVENTION (don't run the whole suite every change)
 Run only the test file for the behavior you touched — each is seconds:
@@ -35,7 +35,7 @@ vessel-scoped chat with auto-routing + auto-run prerequisites; discovery
 trends; positional (position / nearby / distance / between); voyage fuel + general
 "X per Y" (per distance / per operating-hour / per any rate-or-counter);
 signal-by-location (geo); summarize (what's-notable) + regimes (usage patterns);
-RELATIONAL drift detector (`ttmd baseline`/`detect` + `anomaly` intent, persisted
+RELATIONAL drift detector (`galene baseline`/`detect` + `anomaly` intent, persisted
 regime model); BEHAVIORAL-norm detector (dwell-time, "stayed longer than usual",
 no baseline); PRESENTATION MODES (operator/technician/analyst, `--mode` or
 mid-chat switch). Scale-tested to a month. Remaining = the hardening items below.
@@ -45,9 +45,9 @@ mid-chat switch). Scale-tested to a month. Remaining = the hardening items below
 ## P0 — Core capability (baseline + drift detector) — BUILT; extensions remain
 
 ### Baseline store + drift detector (THE anomaly-detection step)
-The "flag when the fingerprint drifts" step EXISTS and is solid (src/ttmd/anomaly/):
+The "flag when the fingerprint drifts" step EXISTS and is solid (src/galene/anomaly/):
 baseline store with persisted regime model, two-layer detector with stable regime
-identity, report, CLI (`ttmd baseline` / `ttmd detect`), and a chat `anomaly` intent.
+identity, report, CLI (`galene baseline` / `galene detect`), and a chat `anomaly` intent.
 Self-consistency verified (a window vs its own baseline shows no structure drift).
 Three named extensions remain to make it fully mature (see REMAINING below).
 
@@ -64,7 +64,7 @@ DONE:
   - Layer 2 (regime events): new/unseen regime (neutral, #8) + distribution shift.
 - **Presentation** (anomaly/report.py): two types labeled distinctly; reports the
   OBSERVED change, never asserts cause.
-- **CLI**: `ttmd baseline <source> --from --to` and `ttmd detect <source> --days N`.
+- **CLI**: `galene baseline <source> --from --to` and `galene detect <source> --days N`.
 - **Chat**: `anomaly` intent ("has anything drifted?"); asks the operator to set a
   known-good baseline first (only they know which period was healthy — not auto-run).
 
@@ -152,7 +152,7 @@ REMAINING:
       every 10km" AVERAGES the signal per distance segment; a rate (fuel) is
       INTEGRATED per segment. efficiency() + _efficiency_plot() take bin_agg;
       signal resolved rate-first only when the message points at a rate.
-- [x] **Presentation modes (operator/technician/analyst)**: `ttmd chat --mode` +
+- [x] **Presentation modes (operator/technician/analyst)**: `galene chat --mode` +
       mid-chat 'switch to X mode'. Reframes INTERPRETIVE intents for the audience
       (operator=short/plain/no-jargon, regime->usage wording; technician=signals+
       check; analyst=full detail unchanged). Presentation only, numbers identical.
@@ -260,7 +260,7 @@ learn from the known-good window per regime, persist, score a new window.
 - [x] **Autoencoder backend (optional)** — DONE. anomaly/autoencoder.py: per-regime
       MLP autoencoder (sklearn MLPRegressor, no torch/new dep) trained on known-good
       rows; reconstruction error = score; threshold = empirical p99.9 (self-consistent
-      ~0.1%); PER-FEATURE error preserves attribution. Behind use_ae (CLI ttmd detect
+      ~0.1%); PER-FEATURE error preserves attribution. Behind use_ae (CLI galene detect
       --ae), OFF by default; only trains where a regime has >=200 rows; seeded for
       determinism; trained on-the-fly from the baseline window (MLP not JSON-persisted).
       ae_available() gates it so the system is unchanged if sklearn is missing.
@@ -392,8 +392,8 @@ a lot of what decomposition would, so item 5 is a last resort.
 - [x] **Cost/token logging** — DONE. provider.UsageMeter wraps any provider and
       tallies calls + input/output tokens + an estimated cost (real usage from
       Bedrock's Converse `usage`, else ~4 chars/token estimate). get_provider(meter
-      =True) opts in; `ttmd chat --usage` shows it (type 'usage' mid-chat, summary
-      on exit). Prices via env (TTMD_PRICE_IN/OUT_PER_1K) so no unverified rate is
+      =True) opts in; `galene chat --usage` shows it (type 'usage' mid-chat, summary
+      on exit). Prices via env (GALENE_PRICE_IN/OUT_PER_1K) so no unverified rate is
       hardcoded as fact. Tested.
 - [ ] **Reduce calls-per-interpret**: batch multiple relationships into one prompt
       (currently ~15 per-relationship + ~5 cluster calls). Cuts cost several-fold.
@@ -414,9 +414,9 @@ a lot of what decomposition would, so item 5 is a last resort.
 
 - [ ] **Web UI**: the whole thing is CLI-only. A non-technical operator/expert
       needs a visual interface (chat, plots inline, review). Big but eventual.
-- [x] **Expert-review UX (CLI)** — DONE. `ttmd review-docs list` now shows the full
+- [x] **Expert-review UX (CLI)** — DONE. `galene review-docs list` now shows the full
       knowledge base by tier (expert-confirmed vs document-extracted/unverified) with
-      stable ids; `ttmd review-docs promote <id>` (extracted -> confirmed) and `ttmd
+      stable ids; `galene review-docs promote <id>` (extracted -> confirmed) and `galene
       review-docs reject <id>` (remove). Uses the existing id-based promote_fact/
       reject_fact. Tested. A WEB UI for non-technical curation is still eventual.
 - [ ] **GPU (deferred, likely unnecessary)**: fast O(n log n) dCor solved the
@@ -465,7 +465,7 @@ a lot of what decomposition would, so item 5 is a last resort.
   count (fixes truncation on wide AIS source); JSON parser salvages truncation.
   A new source with differently-named columns works with NO code change.
 - VESSEL-SCOPED SOURCE ROUTING: chat is scoped to the vessel, not one source.
-  CLI arg is the VESSEL (`ttmd chat [vessel]`, default vessel if omitted); home
+  CLI arg is the VESSEL (`galene chat [vessel]`, default vessel if omitted); home
   source auto-picked (most signal-rich), overridable via --source. Each intent
   auto-routes to the source that can answer it (position->GPS/AIS, nearby->multi-
   vessel AIS, value/plot->source having the signal, relationship/reasoning->source

@@ -11,16 +11,16 @@ import glob
 import json
 
 import config
-from ttmd import term
-from ttmd.cli_helpers import resolve_window, present_globs
-from ttmd.discovery.loader import load_numeric
-from ttmd.discovery.relationships import build_per_regime_graphs
-from ttmd.query import list_capabilities, describe_capabilities, aggregate, fuel_consumption
-from ttmd.query.timeparse import parse_instant
-from ttmd.query.plots import scatter, aggregated_series
-from ttmd.interpretation.resolve import (
+from galene import term
+from galene.cli_helpers import resolve_window, present_globs
+from galene.discovery.loader import load_numeric
+from galene.discovery.relationships import build_per_regime_graphs
+from galene.query import list_capabilities, describe_capabilities, aggregate, fuel_consumption
+from galene.query.timeparse import parse_instant
+from galene.query.plots import scatter, aggregated_series
+from galene.interpretation.resolve import (
     resolve_signal, resolve_aggregation, candidate_signals)
-from ttmd.interpretation.orchestrator import _NeedsClarification as NeedsClarification
+from galene.interpretation.orchestrator import _NeedsClarification as NeedsClarification
 
 import re
 # words to ignore when scanning the user message for signal terms
@@ -81,11 +81,11 @@ _EXPLAIN_USER = ("Asset type: {asset_type}\nDetector findings (JSON):\n{findings
                  "Relevant manual excerpts:\n{docs}\n\n"
                  "Question: {question}\n\nExplanation:")
 
-from ttmd.interpretation.fields import describe_fields
-from ttmd.interpretation.documents import DocumentIndex
-from ttmd.interpretation.interpret import interpret_report
-from ttmd.interpretation import apply_correction
-from ttmd.reporting import describe_discovery
+from galene.interpretation.fields import describe_fields
+from galene.interpretation.documents import DocumentIndex
+from galene.interpretation.interpret import interpret_report
+from galene.interpretation import apply_correction
+from galene.reporting import describe_discovery
 
 
 class ChatDeps:
@@ -379,7 +379,7 @@ class ChatDeps:
         plat, plon = self._latlon_cols(pos_src) if pos_src else (None, None)
         if not (pos_src and plat and plon):
             return None, ""
-        from ttmd.query import voyage_window
+        from galene.query import voyage_window
         pos_globs = present_globs([config.source_glob(pos_src, self.vessel)])
         win = voyage_window(pos_globs, plat, plon, fla, flo, tla, tlo)
         if not win:
@@ -474,7 +474,7 @@ class ChatDeps:
 
     def _source_has_signal(self, source, term):
         """True if `source` has a signal matching `term`."""
-        from ttmd.interpretation.resolve import candidate_signals
+        from galene.interpretation.resolve import candidate_signals
         return bool(candidate_signals(term, self.signals(source)))
 
     def _rate_signals(self, source):
@@ -626,7 +626,7 @@ class ChatDeps:
     def _named_signal_term(self, message):
         """Pull the most likely signal term the user named (any source's columns).
         Used to route relationship/reasoning to the source that owns the signal."""
-        from ttmd.interpretation.resolve import candidate_signals
+        from galene.interpretation.resolve import candidate_signals
         avail = []
         for s in self.all_sources():
             for sig in self.signals(s):
@@ -720,7 +720,7 @@ class ChatDeps:
             lambda c: c.lower() in ("name", "callsign", "shipname", "vessel_name"))
 
     def position(self, source, message):
-        from ttmd.query import current_position
+        from galene.query import current_position
         lat, lon = self._latlon_cols(source)
         if not (lat and lon):
             return (f"'{source}' has no latitude/longitude fields, so I can't give "
@@ -734,7 +734,7 @@ class ChatDeps:
         # the position AT that instant; otherwise the most recent fix.
         tmin, tmax = self._time_range(globs)
         at = parse_instant(message, tmin, tmax)
-        from ttmd.query.spatial import place_label
+        from galene.query.spatial import place_label
         places = config.known_places(self.vessel)
         if at is not None:
             fix = self._position_at(globs, lat, lon, at, tolerance_s=1800)
@@ -755,7 +755,7 @@ class ChatDeps:
         """How far the asset travelled over a window = length of the position
         track (great-circle sum of hops), NOT an integral of a speed signal.
         Uses the position source; window from params (default all data)."""
-        from ttmd.query import track_distance_km
+        from galene.query import track_distance_km
         pos_src = source if all(self._latlon_cols(source)) else self._own_position_source()
         plat, plon = self._latlon_cols(pos_src) if pos_src else (None, None)
         if not (pos_src and plat and plon):
@@ -779,7 +779,7 @@ class ChatDeps:
         position source). Serves e.g. 'is vibration higher in some locations' —
         vibration magnitude by area as a sea-state proxy. Data-driven throughout.
         """
-        from ttmd.query import signal_by_location as _sbl
+        from galene.query import signal_by_location as _sbl
         term = (params.get("signal") or "").strip()
         # a source name in the message ("vibration") isn't a signal term
         if term and term.lower() in {s.lower() for s in self.all_sources()}:
@@ -852,7 +852,7 @@ class ChatDeps:
         return (single or latlon or [None])[0]
 
     def nearby(self, source, message):
-        from ttmd.query import ships_nearby, current_position
+        from galene.query import ships_nearby, current_position
         # nearby needs OTHER-entity positions + an identifier + own position.
         # All columns resolved by ROLE (field-semantics), not hardcoded names.
         lat, lon = self._latlon_cols(source)
@@ -895,7 +895,7 @@ class ChatDeps:
         a time. Resolves each name in the multi-entity source, gets each one's
         position at the instant, returns the haversine between them. Column names
         role-resolved; entity names parsed from the message by the LLM."""
-        from ttmd.query import entity_position_at, haversine_km
+        from galene.query import entity_position_at, haversine_km
         lat, lon = self._latlon_cols(source)
         id_col = self._id_col(source)
         name_col = self._name_col(source)
@@ -944,7 +944,7 @@ class ChatDeps:
         position track; the INTEGRAL is computed on `source` (which owns the rate
         signal). Everything resolved by ROLE / field-semantics — no hardcoding.
         """
-        from ttmd.query import voyage_window, aggregate
+        from galene.query import voyage_window, aggregate
 
         # 0. TRIP ABSTRACTION: "the last voyage / trip / leg" needs no coordinates —
         # auto-detect legs from the track and use the most recent one's window.
@@ -1114,7 +1114,7 @@ class ChatDeps:
         delta; distance -> track length). Fully data-driven: X and Y are resolved
         from field-semantics, no hardcoded signal names. Distance is just one Y.
         """
-        from ttmd.query import track_distance_km
+        from galene.query import track_distance_km
         avail = self.signals(source)
         x_term = params.get("signal") or ""
         y_term = params.get("per_signal") or ""
@@ -1189,7 +1189,7 @@ class ChatDeps:
         The distance segmentation + plotting is shared; only the per-bin math
         differs. Cross-source (distance from the position source), data-driven.
         """
-        from ttmd.query import aggregate, track_distance_km
+        from galene.query import aggregate, track_distance_km
 
         # resolve the signal. Prefer a rate when the phrasing is about consumption
         # or a rate is clearly named; otherwise take whatever signal was named
@@ -1295,8 +1295,8 @@ class ChatDeps:
         segment value is the INTEGRAL (consumption in that bin); for any other
         signal it's an AGGREGATE (avg) in that bin. Cross-source: segments from
         the position source, values on `source`."""
-        from ttmd.query import aggregate, distance_segments
-        from ttmd.query.plots import distance_series
+        from galene.query import aggregate, distance_segments
+        from galene.query.plots import distance_series
 
         pos_src = self._own_position_source()
         plat, plon = self._latlon_cols(pos_src) if pos_src else (None, None)
@@ -1355,7 +1355,7 @@ class ChatDeps:
     def _detect_legs(self):
         """Auto-detected voyage legs on the own-position source (place-named via
         the offline port list). Empty if no position track / <2 stops."""
-        from ttmd.query import detect_legs
+        from galene.query import detect_legs
         pos_src = self._own_position_source()
         if not pos_src:
             return []
@@ -1393,7 +1393,7 @@ class ChatDeps:
         """Integrate the rate signal over an ALREADY-KNOWN leg window (from trip
         auto-detection). Mirrors voyage()'s integral step but skips the coordinate
         -> window match (the leg already carries t_start/t_end)."""
-        from ttmd.query import aggregate
+        from galene.query import aggregate
         rates = self._rate_signals(source)
         if not rates:
             return (f"Found {win_label}, but '{source}' has no consumption/rate "
@@ -1437,7 +1437,7 @@ class ChatDeps:
         integrated over the leg) / (leg distance); norm = median/p90 of prior legs.
         Observed comparison, never the cause; confidence by number of prior legs."""
         import statistics
-        from ttmd.query import aggregate
+        from galene.query import aggregate
         _cant = ("Whether that's within the expected range: I can't judge it yet — "
                  "that compares this trip's fuel-per-distance to enough PRIOR "
                  "voyages, and ")
@@ -1488,8 +1488,8 @@ class ChatDeps:
         report the two layers (structure drift = possible fault; regime events =
         usage change), never asserting cause.
         """
-        from ttmd.anomaly import has_baseline, load_baseline, detect_drift
-        from ttmd.anomaly.report import render_drift
+        from galene.anomaly import has_baseline, load_baseline, detect_drift
+        from galene.anomaly.report import render_drift
 
         dates = config.available_dates(source, self.vessel)
         if not dates:
@@ -1506,7 +1506,7 @@ class ChatDeps:
             note = (f"I don't have a known-good baseline for '{source}' yet, so I "
                     "can't check its sensor-relationship structure for faults — set "
                     "one to enable that:\n"
-                    f"  ttmd baseline {source} --from {first} --to <a-healthy-end-date>\n"
+                    f"  galene baseline {source} --from {first} --to <a-healthy-end-date>\n"
                     f"Available dates: {first} .. {last}.")
             # if behavior itself flagged something, lead with that (it needs no baseline)
             return (beh_txt + note) if beh_txt else note
@@ -1657,7 +1657,7 @@ class ChatDeps:
         usual'). Runs on the position track (not `source` — behavior is a vessel
         property). Returns a list of plain-language flag strings (may be empty).
         Reports the observed behavior, never the cause."""
-        from ttmd.anomaly import detect_stops, flag_current_dwell
+        from galene.anomaly import detect_stops, flag_current_dwell
         pos_src = self._own_position_source()
         plat, plon = self._latlon_cols(pos_src) if pos_src else (None, None)
         if not (pos_src and plat and plon):
@@ -1687,7 +1687,7 @@ class ChatDeps:
         notable signal stats (constant / near-range-edge), and drift findings IF a
         known-good baseline exists. Auto-runs discovery if missing. Pure data —
         no LLM here."""
-        from ttmd.anomaly import has_baseline, load_baseline, detect_drift
+        from galene.anomaly import has_baseline, load_baseline, detect_drift
         facts = {"source": source}
 
         if not self.has_discovery(source):
@@ -1765,7 +1765,7 @@ class ChatDeps:
             # multi-timescale: is the change a SUDDEN break or SLOW drift?
             model = baseline.get("regime_model")
             if model is not None and len(dates) >= 2:
-                from ttmd.anomaly import multiscale_drift
+                from galene.anomaly import multiscale_drift
                 ms = multiscale_drift(source, dates, self.vessel, model,
                                       granularity="day", with_mi=False)
                 cls = ms.get("classification", {})
@@ -1827,7 +1827,7 @@ class ChatDeps:
             L.append(f"- {len(d['regime_events'])} usage/regime change(s) vs baseline.")
         elif not d:
             L.append("- No known-good baseline set, so no drift check — set one "
-                     "with `ttmd baseline` to flag changes vs normal.")
+                     "with `galene baseline` to flag changes vs normal.")
         L.append("(Observed structure/changes; the data shows WHAT, not the cause.)")
         return "\n".join(L)
 
@@ -1836,8 +1836,8 @@ class ChatDeps:
 
     def _run_fusion(self):
         """Build (or rebuild) fused cross-source discovery -> discovery_fused.json."""
-        from ttmd.discovery.fusion import fuse_sources
-        from ttmd.discovery.relationships import build_per_regime_graphs
+        from galene.discovery.fusion import fuse_sources
+        from galene.discovery.relationships import build_per_regime_graphs
         srcs = self.all_sources()
         if len(srcs) < 2:
             return None

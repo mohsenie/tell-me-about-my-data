@@ -7,6 +7,15 @@ import os
 from abc import ABC, abstractmethod
 
 
+def _env(name: str, default: str | None = None) -> str | None:
+    """Read a GALENE_<name> env var, falling back to the legacy TTMD_<name> so
+    existing setups (e.g. `export TTMD_LLM=bedrock`) keep working. GALENE_ wins."""
+    val = os.environ.get(f"GALENE_{name}")
+    if val is not None:
+        return val
+    return os.environ.get(f"TTMD_{name}", default)
+
+
 class LLMProvider(ABC):
     @abstractmethod
     def complete(self, system: str, user: str, max_tokens: int | None = None) -> str:
@@ -28,7 +37,7 @@ class StubProvider(LLMProvider):
     def complete(self, system: str, user: str, max_tokens: int | None = None) -> str:
         # No real reasoning offline. Echo a clearly-labeled placeholder so the
         # report STRUCTURE (per-relationship + cross-relationship) is visible.
-        # Connect a real provider (TTMD_LLM=bedrock) for genuine hypotheses.
+        # Connect a real provider (GALENE_LLM=bedrock) for genuine hypotheses.
         if user.strip().startswith("These signals are all related"):
             return ("(stub) Multiple signals share a common driver — a real LLM "
                     "would propose a single physical mechanism here.")
@@ -41,7 +50,8 @@ class BedrockProvider(LLMProvider):  # pragma: no cover - needs AWS creds
     Notes learned from the live account:
     - eu-west-1 requires the regional inference-profile prefix, e.g.
       'eu.anthropic.claude-haiku-4-5-20251001-v1:0' (bare model IDs 404 on Converse).
-    - Configurable via env: TTMD_BEDROCK_REGION, TTMD_BEDROCK_MODEL.
+    - Configurable via env: GALENE_BEDROCK_REGION, GALENE_BEDROCK_MODEL
+      (legacy TTMD_BEDROCK_* still honored).
     """
 
     DEFAULT_REGION = "eu-west-1"
@@ -50,8 +60,8 @@ class BedrockProvider(LLMProvider):  # pragma: no cover - needs AWS creds
     def __init__(self, model_id: str | None = None, region: str | None = None,
                  max_tokens: int = 1024):
         import boto3  # lazy: stub path needs no boto3
-        self._region = region or os.environ.get("TTMD_BEDROCK_REGION", self.DEFAULT_REGION)
-        self._model_id = model_id or os.environ.get("TTMD_BEDROCK_MODEL", self.DEFAULT_MODEL)
+        self._region = region or _env("BEDROCK_REGION", self.DEFAULT_REGION)
+        self._model_id = model_id or _env("BEDROCK_MODEL", self.DEFAULT_MODEL)
         self._client = boto3.client("bedrock-runtime", region_name=self._region)
         self._max_tokens = max_tokens
 
@@ -71,8 +81,8 @@ class BedrockProvider(LLMProvider):  # pragma: no cover - needs AWS creds
 # Approximate Amazon Bedrock on-demand price for Claude Haiku 4.5 (per 1K tokens,
 # USD). ROUGH — pricing changes and varies by region; used only for a cost
 # ESTIMATE the operator can sanity-check, never billed. Override via env.
-_HAIKU_INPUT_PER_1K = float(os.environ.get("TTMD_PRICE_IN_PER_1K", "0.001"))
-_HAIKU_OUTPUT_PER_1K = float(os.environ.get("TTMD_PRICE_OUT_PER_1K", "0.005"))
+_HAIKU_INPUT_PER_1K = float(_env("PRICE_IN_PER_1K", "0.001"))
+_HAIKU_OUTPUT_PER_1K = float(_env("PRICE_OUT_PER_1K", "0.005"))
 # fallback token estimate when the backend doesn't report usage (~4 chars/token)
 _CHARS_PER_TOKEN = 4
 
@@ -131,8 +141,8 @@ class UsageMeter(LLMProvider):
 
 
 def get_provider(meter: bool = False) -> LLMProvider:
-    """Select a provider from env (TTMD_LLM=bedrock|stub). Defaults to stub.
-    meter=True wraps it in a UsageMeter for token/cost logging."""
-    kind = os.environ.get("TTMD_LLM", "stub").lower()
+    """Select a provider from env (GALENE_LLM=bedrock|stub; legacy TTMD_LLM also
+    honored). Defaults to stub. meter=True wraps it in a UsageMeter."""
+    kind = (_env("LLM", "stub") or "stub").lower()
     inner = BedrockProvider() if kind == "bedrock" else StubProvider()
     return UsageMeter(inner) if meter else inner

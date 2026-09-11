@@ -1,7 +1,7 @@
 """Project paths. Single source of truth for locations used by the CLI.
 
 Tuning constants for the discovery/profiling logic live in
-src/ttmd/constants.py (package-internal), not here.
+src/galene/constants.py (package-internal), not here.
 """
 from pathlib import Path
 

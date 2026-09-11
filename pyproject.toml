@@ -16,11 +16,9 @@ dependencies = [
 ]
 
 [project.scripts]
-# `galene` is the brand command; `ttmd` kept as an alias so existing usage/docs and
-# the internal package name (import ttmd) keep working — renaming the import package
-# would ripple through every module, env var (TTMD_*), and test.
-galene = "ttmd.cli:main"
-ttmd = "ttmd.cli:main"
+# `galene` is the command; `ttmd` kept as a thin backward-compatible alias.
+galene = "galene.cli:main"
+ttmd = "galene.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

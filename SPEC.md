@@ -177,12 +177,12 @@ short scales. Year-over-year handles seasonality.
 
 ## 6. What is built (code)
 
-Installable package `ttmd`.
+Installable package `galene`.
 
 ```
 config.py                    paths; user metadata (asset_type, per-source protocol);
                              source auto-discovery; time-window helpers
-src/ttmd/
+src/galene/
   cli.py / cli_helpers.py    commands + shared window/kb/summary helpers
   chat_deps.py               capability bridge for the chat orchestrator
   term.py                    ANSI color (user vs LLM), auto-off when piped
@@ -227,18 +227,18 @@ sources; optional `--source` home override, optional `--mode`) · `discover` ·
 
 ### Tests
 Functional pytest suite (deterministic, no live LLM): `python -m pytest tests/` —
-61 pass / 1 skip (LLM intent case, needs `TTMD_LLM=bedrock`). ~64% coverage of the
+61 pass / 1 skip (LLM intent case, needs `GALENE_LLM=bedrock`). ~64% coverage of the
 functional library (.coveragerc omits cli.py wiring + unused io reader); compute
 core (discovery/query/spatial/anomaly) 85-95%. Tests assert OUTCOMES not LLM prose;
 a `FakeProvider` (tests/conftest.py) drives dispatch tests without Bedrock.
 
 ### Running the chat + persona modes
 ```
-ttmd chat                      # default vessel, analyst mode
-ttmd chat vessel-001 --mode operator      # business/ops: short, plain, no jargon
-ttmd chat vessel-001 --mode technician    # engineer: signals/couplings + what to check
-ttmd chat vessel-001 --mode analyst       # DEFAULT: full detail with numbers
-ttmd chat vessel-001 --source engine --mode operator
+galene chat                      # default vessel, analyst mode
+galene chat vessel-001 --mode operator      # business/ops: short, plain, no jargon
+galene chat vessel-001 --mode technician    # engineer: signals/couplings + what to check
+galene chat vessel-001 --mode analyst       # DEFAULT: full detail with numbers
+galene chat vessel-001 --source engine --mode operator
 ```
 Mode is set with `--mode` at launch OR changed mid-chat by saying "switch to
 business/technician/analyst mode" (synonyms: business/ops/manager/captain->operator,
@@ -262,7 +262,7 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   value/plot/trend -> the source that actually has the referenced signal,
   relationship/reasoning -> the discovery-bound home source. Routing is
   data-driven (detected from columns), not a hardcoded source map. The CLI arg is
-  the VESSEL (`ttmd chat vessel-001`, or just `ttmd chat`); the home source is
+  the VESSEL (`galene chat vessel-001`, or just `galene chat`); the home source is
   auto-picked (most signal-rich) and only used for signal-less relationship/
   reasoning. relationship/reasoning that NAME a signal route to the source that
   owns it. Verified: `chat vessel-001` then "where is the ship / list ships
@@ -281,7 +281,7 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   operator's "is it behaving normally"). Verified on the real track (8 stops, a
   24h ongoing stop flagged at 37x normal). Additive; daily-distance / speed-profile
   behaviors fit the same shape next.
-- **Presentation modes (operator / technician / analyst)**: `ttmd chat --mode
+- **Presentation modes (operator / technician / analyst)**: `galene chat --mode
   operator` (or "switch to business mode" mid-chat) reframes the INTERPRETIVE
   answers (summarize / anomaly / regimes / reasoning) for the audience — operator:
   short, plain, no jargon, regime->usage wording ("staying in one place longer
@@ -349,9 +349,9 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   the own-position source (single-entity lat/lon, no identifier) is distinguished
   from a multi-entity feed automatically. Name-pattern matching remains only as a
   pre-description fallback hint. New/renamed columns work with no code change.
-- **Baseline + drift detector (the anomaly step)**: `ttmd baseline
+- **Baseline + drift detector (the anomaly step)**: `galene baseline
   <source> --from --to` saves a known-good fingerprint (per-regime edge maps +
-  centroids/fractions + a normal-variation band from per-day wobble). `ttmd detect
+  centroids/fractions + a normal-variation band from per-day wobble). `galene detect
   <source> --days N` / chat "has anything drifted?" compares a window to it in TWO
   layers: (1) within-regime relationship-structure drift (one-to-one regime match,
   per-edge dcor diff beyond 3x the band, ranked, confidence by volume) = possible
@@ -413,7 +413,7 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   dep, no torch) on the known-good rows; reconstruction error is the score,
   threshold = empirical p99.9 of training errors (self-consistent ~0.1%), and the
   PER-FEATURE error preserves attribution (which signals reconstructed worst).
-  DELIBERATELY optional and secondary: behind `use_ae` (CLI `ttmd detect --ae`),
+  DELIBERATELY optional and secondary: behind `use_ae` (CLI `galene detect --ae`),
   OFF by default — it adds a seeded-but-stochastic training step and only runs
   where a regime has >=200 rows, so it regresses the training-free character and is
   opt-in. Trained on-the-fly from the baseline window (the MLP isn't JSON-persisted).
@@ -481,7 +481,7 @@ values/plots are the same in every mode. Implemented in orchestrator.py
 ### Bedrock config (learned live)
 - eu-west-1 requires the regional inference-profile prefix, e.g.
   `eu.anthropic.claude-haiku-4-5-20251001-v1:0` (bare IDs fail on Converse).
-- Env: `TTMD_LLM=bedrock`, `TTMD_BEDROCK_REGION`, `TTMD_BEDROCK_MODEL`.
+- Env: `GALENE_LLM=bedrock`, `GALENE_BEDROCK_REGION`, `GALENE_BEDROCK_MODEL`.
 
 ---
 
@@ -547,6 +547,6 @@ in MARKET.md — still valid and independent of this method choice.)
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e .
-ttmd discover engine       # regimes + per-regime relationship graphs
-ttmd discover vibration    # -> artifacts/discovery_<source>.json
+galene discover engine       # regimes + per-regime relationship graphs
+galene discover vibration    # -> artifacts/discovery_<source>.json
 ```

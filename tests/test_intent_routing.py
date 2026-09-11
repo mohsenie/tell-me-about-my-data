@@ -3,10 +3,10 @@
 Captures phrasings validated during development + the misroutes we fixed, so
 prompt tweaks don't silently re-break a working case.
 
-Runs against the configured provider. With the stub (no TTMD_LLM=bedrock) the LLM
+Runs against the configured provider. With the stub (no GALENE_LLM=bedrock) the LLM
 classifier can't judge, so those cases are SKIPPED — run with a real provider to
-actually check routing:  TTMD_LLM=bedrock python -m pytest tests/ -q
-(or: TTMD_LLM=bedrock python tests/test_intent_routing.py)
+actually check routing:  GALENE_LLM=bedrock python -m pytest tests/ -q
+(or: GALENE_LLM=bedrock python tests/test_intent_routing.py)
 """
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ IN_SCOPE_META = [
 
 
 def _classify(provider, message):
-    from ttmd.interpretation.orchestrator import (
+    from galene.interpretation.orchestrator import (
         _INTENT_SYSTEM, _INTENT_INSTRUCTION, INTENTS)
     raw = provider.complete(
         _INTENT_INSTRUCTION,
@@ -164,9 +164,9 @@ def _route_message_cases():
 def run_source_routing():
     """Deterministic routing checks against the real vessel data on disk."""
     import config
-    from ttmd.chat_deps import ChatDeps
-    from ttmd.interpretation import get_provider
-    from ttmd.cli_helpers import kb
+    from galene.chat_deps import ChatDeps
+    from galene.interpretation import get_provider
+    from galene.cli_helpers import kb
 
     srcs = config.discover_sources(config.DEFAULT_VESSEL)
     print("\n== source routing ==")
@@ -200,13 +200,13 @@ def run_voyage_compute():
     import glob
     import duckdb
     import config
-    from ttmd.query import voyage_window, aggregate
+    from galene.query import voyage_window, aggregate
 
     print("\n== voyage compute ==")
     # find a position source (single-entity lat/lon) from the filesystem
-    from ttmd.cli_helpers import kb
-    from ttmd.interpretation import get_provider
-    from ttmd.chat_deps import ChatDeps
+    from galene.cli_helpers import kb
+    from galene.interpretation import get_provider
+    from galene.chat_deps import ChatDeps
     deps = ChatDeps("ship", get_provider(), kb("ship"), config.DEFAULT_VESSEL)
     pos_src = deps._own_position_source()
     if not pos_src:
@@ -250,7 +250,7 @@ def run_voyage_compute():
               "run a value/voyage query once to populate field-semantics)")
 
     # track_distance_km over the whole window should be > 0 (the ship moved)
-    from ttmd.query import track_distance_km, distance_segments
+    from galene.query import track_distance_km, distance_segments
     total_km = track_distance_km(pglobs, plat, plon)
     ok3 = total_km > 0
     fail += 0 if ok3 else 1
@@ -271,7 +271,7 @@ def run_voyage_compute():
 
     # entity_position_at: name resolves via id even when position rows have blank
     # names (AIS sparsity). Use a multi-entity source if one exists.
-    from ttmd.query import entity_position_at, haversine_km
+    from galene.query import entity_position_at, haversine_km
     multi = next((s for s in deps.all_sources()
                   if all(deps._latlon_cols(s)) and deps._id_col(s)), None)
     if multi:
@@ -305,7 +305,7 @@ def run_voyage_compute():
         print("  SKIP  entity-by-name (no multi-entity position source)")
 
     # signal_by_location: cross-source spatial aggregation returns per-cell values
-    from ttmd.query import signal_by_location as _sbl
+    from galene.query import signal_by_location as _sbl
     vib_src = next((s for s in deps.all_sources()
                     if deps.signal_family(s, "vibration")[0]), None)
     if vib_src:
@@ -325,7 +325,7 @@ def run_anomaly_compute():
     """Deterministic baseline + drift checks. No LLM. The key invariant: a window
     compared to its OWN baseline must show NO structural drift (self-consistency)."""
     import config
-    from ttmd.anomaly import build_baseline, detect_drift
+    from galene.anomaly import build_baseline, detect_drift
 
     print("\n== anomaly (baseline + drift) ==")
     # pick a source with enough dates + numeric structure
@@ -352,10 +352,10 @@ def run_anomaly_compute():
           f"structure drift ({len(l1)} regime(s) flagged)")
 
     # behavioral-norm: stop detection + dwell flag on the position track
-    from ttmd.anomaly import detect_stops, flag_current_dwell
-    from ttmd.cli_helpers import kb as _kb2
-    from ttmd.interpretation import get_provider as _gp2
-    from ttmd.chat_deps import ChatDeps as _CD2
+    from galene.anomaly import detect_stops, flag_current_dwell
+    from galene.cli_helpers import kb as _kb2
+    from galene.interpretation import get_provider as _gp2
+    from galene.chat_deps import ChatDeps as _CD2
     import glob as _g2
     deps2 = _CD2("ship", _gp2(), _kb2("ship"), config.DEFAULT_VESSEL)
     ps = deps2._own_position_source()
@@ -384,7 +384,7 @@ def run_timeparse():
     at a named time, and absolute-date positions."""
     import datetime as dt
     import calendar
-    from ttmd.query.timeparse import parse_instant
+    from galene.query.timeparse import parse_instant
 
     print("\n== time parsing ==")
     lo = float(calendar.timegm(dt.datetime(2026, 9, 1, 0, 0).timetuple()))
@@ -419,10 +419,10 @@ def run_resolution():
       - axis narrowing: 'frequency ... x axis' -> frequency_x, not an ambiguity,
       - ambiguity preserved when NO axis is given."""
     import config
-    from ttmd.cli_helpers import kb
-    from ttmd.interpretation import get_provider
-    from ttmd.chat_deps import ChatDeps, NeedsClarification
-    from ttmd.interpretation.resolve import candidate_signals
+    from galene.cli_helpers import kb
+    from galene.interpretation import get_provider
+    from galene.chat_deps import ChatDeps, NeedsClarification
+    from galene.interpretation.resolve import candidate_signals
 
     print("\n== signal resolution ==")
     deps = ChatDeps("ship", get_provider(), kb("ship"), config.DEFAULT_VESSEL)
@@ -545,7 +545,7 @@ def run_resolution():
         print(f"  FAIL  describe_regimes ({type(e).__name__})")
 
     # value-guard: names a signal + a quantity word -> value (deterministic)
-    from ttmd.interpretation.orchestrator import Orchestrator
+    from galene.interpretation.orchestrator import Orchestrator
     o = Orchestrator("engine", "ship", get_provider(), kb("ship"), deps)
     for msg, exp in [("give me normal frequency_x", True),
                      ("what is the average EngineSpeed", True),
@@ -562,12 +562,12 @@ def run_modes():
     """Deterministic presentation-mode checks (no LLM): mode normalization,
     mid-chat switch detection, and that analyst mode passes interpretive replies
     through unchanged (framing is presentation-only, never for analyst)."""
-    from ttmd.interpretation.orchestrator import (
+    from galene.interpretation.orchestrator import (
         _norm_mode, _detect_mode_switch, Orchestrator)
     import config
-    from ttmd.cli_helpers import kb
-    from ttmd.interpretation import get_provider
-    from ttmd.chat_deps import ChatDeps
+    from galene.cli_helpers import kb
+    from galene.interpretation import get_provider
+    from galene.chat_deps import ChatDeps
 
     print("\n== presentation modes ==")
     fail = 0
@@ -607,8 +607,8 @@ def run_modes():
 
 
 def run():
-    from ttmd.interpretation import get_provider
-    from ttmd.interpretation.scope import check_scope
+    from galene.interpretation import get_provider
+    from galene.interpretation.scope import check_scope
 
     provider = get_provider()
     is_stub = type(provider).__name__ == "StubProvider"
@@ -638,7 +638,7 @@ def run():
                 + mode_fail)
 
     if is_stub:
-        print("\n== intent routing == SKIPPED (stub provider; set TTMD_LLM=bedrock)")
+        print("\n== intent routing == SKIPPED (stub provider; set GALENE_LLM=bedrock)")
         return scope_fail + det_fail
 
     print("\n== intent routing ==")
@@ -669,7 +669,7 @@ import pytest as _pytest
 
 
 def test_scope_gate():
-    from ttmd.interpretation.scope import check_scope
+    from galene.interpretation.scope import check_scope
     for m in OFF_DOMAIN:
         assert not check_scope(m).in_scope, m
     for m in IN_SCOPE_META:
@@ -702,10 +702,11 @@ def test_presentation_modes():
     assert run_modes() == 0
 
 
-@_pytest.mark.skipif(_os.environ.get("TTMD_LLM", "").lower() != "bedrock",
-                     reason="intent classification needs a live LLM (TTMD_LLM=bedrock)")
+@_pytest.mark.skipif(
+    (_os.environ.get("GALENE_LLM") or _os.environ.get("TTMD_LLM", "")).lower() != "bedrock",
+    reason="intent classification needs a live LLM (GALENE_LLM=bedrock)")
 def test_intent_classification():
-    from ttmd.interpretation import get_provider
+    from galene.interpretation import get_provider
     provider = get_provider()
     fails = [(m, e, _classify(provider, m)) for m, e in CASES
              if _classify(provider, m) != e]

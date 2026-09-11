@@ -19,9 +19,9 @@ import math
 import numpy as np
 
 import config
-from ttmd.discovery.loader import load_numeric, load_numeric_with_time
-from ttmd.discovery.regimes import label_sequence, assign_labels
-from ttmd.discovery.relationships import (
+from galene.discovery.loader import load_numeric, load_numeric_with_time
+from galene.discovery.regimes import label_sequence, assign_labels
+from galene.discovery.relationships import (
     build_per_regime_graphs, graphs_for_fixed_regimes, clean_frame)
 from .baseline import _fingerprint, _fingerprint_from_fixed, _edge_key
 from .transitions import detect_transition_anomalies

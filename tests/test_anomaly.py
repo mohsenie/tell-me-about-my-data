@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 import config
-from ttmd.anomaly import (
+from galene.anomaly import (
     build_baseline, detect_drift, detect_stops, dwell_norm, flag_current_dwell)
 
 # Baseline-building runs discovery repeatedly -> seconds each. Mark slow so
@@ -98,9 +98,9 @@ def test_dwell_norm_and_flag(pos_source, globs):
 
 def test_assign_labels_matches_training(has_data):
     """assign_labels on the training columns reproduces cluster membership shape."""
-    from ttmd.discovery.regimes import segment_regimes, assign_labels
-    from ttmd.discovery.loader import load_numeric
-    from ttmd.discovery.relationships import clean_frame
+    from galene.discovery.regimes import segment_regimes, assign_labels
+    from galene.discovery.loader import load_numeric
+    from galene.discovery.relationships import clean_frame
     src = _first_multiday_source()
     if not src:
         import pytest; pytest.skip("no source")
@@ -121,7 +121,7 @@ def test_assign_labels_matches_training(has_data):
 
 # ---------------- regime transitions (Layer-2 temporal) ----------------
 def test_runs_from_labels_collapses_consecutive():
-    from ttmd.anomaly import runs_from_labels
+    from galene.anomaly import runs_from_labels
     assert runs_from_labels([0, 0, 0, 1, 1, 2, 2, 2, 0]) == [0, 1, 2, 0]
     assert runs_from_labels([]) == []
     assert runs_from_labels([5, 5, 5]) == [5]
@@ -129,7 +129,7 @@ def test_runs_from_labels_collapses_consecutive():
 
 def test_transition_matrix_and_self_consistency():
     """A window with the SAME sequence pattern as the baseline flags nothing."""
-    from ttmd.anomaly import build_transition_matrix, detect_transition_anomalies
+    from galene.anomaly import build_transition_matrix, detect_transition_anomalies
     btm = build_transition_matrix([0, 1, 2] * 20, k=3)
     assert btm["n_transitions"] == 59
     assert btm["probs"]["0->1"] == 1.0
@@ -140,7 +140,7 @@ def test_transition_matrix_and_self_consistency():
 
 def test_transition_detects_unseen_and_absent():
     """A new mode-jump is 'unseen'; usual steps that vanish are 'absent'."""
-    from ttmd.anomaly import build_transition_matrix, detect_transition_anomalies
+    from galene.anomaly import build_transition_matrix, detect_transition_anomalies
     btm = build_transition_matrix([0, 1, 2] * 20, k=3)
     res = detect_transition_anomalies([0, 2, 0, 2, 0, 2], btm)
     types = {(f["type"], f["from"], f["to"]) for f in res["findings"]}
@@ -172,7 +172,7 @@ def test_baseline_persists_transitions_and_detector_surfaces(has_data):
 
 # ---------------- multi-timescale fingerprints ----------------
 def test_period_key_and_grouping():
-    from ttmd.anomaly import period_key, group_dates
+    from galene.anomaly import period_key, group_dates
     assert period_key("2026-09-04", "day") == "2026-09-04"
     assert period_key("2026-09-04", "month") == "2026-09"
     assert period_key("2026-09-04", "year") == "2026"
@@ -182,7 +182,7 @@ def test_period_key_and_grouping():
 
 
 def test_fingerprint_distance_symmetry_and_zero():
-    from ttmd.anomaly import fingerprint_distance
+    from galene.anomaly import fingerprint_distance
     fp = {"regimes": {"0": {"edges": {"a::b": 0.5}}}}
     assert fingerprint_distance(fp, fp)["distance"] == 0.0     # identity
     fp2 = {"regimes": {"0": {"edges": {"a::b": 0.9}}}}
@@ -192,7 +192,7 @@ def test_fingerprint_distance_symmetry_and_zero():
 
 
 def test_classify_sudden_vs_slow():
-    from ttmd.anomaly.timescale import _classify
+    from galene.anomaly.timescale import _classify
     assert _classify([0.01, 0.02, 0.01], [0.01, 0.02, 0.02])["pattern"] == "stable"
     assert _classify([0.02, 0.30, 0.02], [0.02, 0.30, 0.28])["pattern"] == "sudden_break"
     assert _classify([0.05, 0.05, 0.05, 0.05],
@@ -214,7 +214,7 @@ def test_multiscale_drift_endtoend(has_data):
     model = bl.get("regime_model")
     if model is None:
         pytest.skip("degenerate clustering (no model)")
-    from ttmd.anomaly import multiscale_drift
+    from galene.anomaly import multiscale_drift
     res = multiscale_drift(src, dates, config.DEFAULT_VESSEL, model, granularity="day")
     assert res.get("n_periods", 0) >= 1
     assert res["periods"][0]["step_distance"] is None          # first has no prev
@@ -226,7 +226,7 @@ def test_multiscale_drift_endtoend(has_data):
 def test_fit_envelope_and_self_scores_low():
     """An envelope fit on data flags ~0.1% of that same data (empirical tail)."""
     import numpy as np
-    from ttmd.anomaly import fit_envelope, mahalanobis
+    from galene.anomaly import fit_envelope, mahalanobis
     rng = np.random.default_rng(0)
     cov = np.array([[1, 0.8, 0.1], [0.8, 1, 0.1], [0.1, 0.1, 1]])
     X = rng.multivariate_normal([0, 0, 0], cov, size=3000)
@@ -241,8 +241,8 @@ def test_joint_catches_correlation_breaking_point():
     (breaks a strong correlation) scores far beyond threshold and is attributed
     to the two signals that broke."""
     import numpy as np
-    from ttmd.anomaly import fit_envelope, mahalanobis
-    from ttmd.anomaly.joint import per_signal_contribution
+    from galene.anomaly import fit_envelope, mahalanobis
+    from galene.anomaly.joint import per_signal_contribution
     rng = np.random.default_rng(1)
     cov = np.array([[1, 0.8, 0.1], [0.8, 1, 0.1], [0.1, 0.1, 1]])
     X = rng.multivariate_normal([0, 0, 0], cov, size=3000)
@@ -258,7 +258,7 @@ def test_monotonic_columns_excluded():
     """A monotonic counter column is dropped from the envelope (its mean drifts
     with time by construction, so it must not drive joint flags)."""
     import numpy as np
-    from ttmd.anomaly.joint import build_joint_envelopes
+    from galene.anomaly.joint import build_joint_envelopes
     n = 500
     counter = np.arange(n, dtype=float)               # strictly increasing
     noise = np.random.default_rng(2).normal(size=n)
@@ -295,18 +295,18 @@ def test_joint_baseline_and_detector_selfconsistency(has_data):
 
 # ---------------- optional autoencoder backend ----------------
 def test_ae_available_is_bool():
-    from ttmd.anomaly import ae_available
+    from galene.anomaly import ae_available
     assert isinstance(ae_available(), bool)
 
 
 def test_ae_learns_nonlinear_manifold():
     """The AE flags ~0.1% of its training data and flags an off-manifold point —
     the nonlinear case a covariance ellipsoid can't capture. Skips if no backend."""
-    from ttmd.anomaly import ae_available
+    from galene.anomaly import ae_available
     if not ae_available():
         pytest.skip("AE backend unavailable")
     import numpy as np
-    from ttmd.anomaly import train_ae, ae_errors
+    from galene.anomaly import train_ae, ae_errors
     rng = np.random.default_rng(0)
     x = rng.uniform(-1, 1, size=(2000,))
     X = np.column_stack([x, np.sin(3 * x), x ** 2]) + rng.normal(0, 0.03, size=(2000, 3))
@@ -319,7 +319,7 @@ def test_ae_learns_nonlinear_manifold():
 
 
 def test_train_ae_too_few_rows_returns_none():
-    from ttmd.anomaly import ae_available, train_ae
+    from galene.anomaly import ae_available, train_ae
     if not ae_available():
         pytest.skip("AE backend unavailable")
     import numpy as np
@@ -329,7 +329,7 @@ def test_train_ae_too_few_rows_returns_none():
 @pytest.mark.slow
 def test_detect_ae_flag_off_by_default_and_optional(has_data):
     """use_ae is opt-in: absent by default; present + self-consistent when on."""
-    from ttmd.anomaly import ae_available
+    from galene.anomaly import ae_available
     src = "engine" if "engine" in config.discover_sources() else _first_multiday_source()
     if not src:
         pytest.skip("no source")

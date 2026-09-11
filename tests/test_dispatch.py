@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 import config
-from ttmd.interpretation.orchestrator import Orchestrator
+from galene.interpretation.orchestrator import Orchestrator
 
 
 def _session(fake, deps, kb_ship, home="engine", mode="analyst", **seed):
@@ -86,7 +86,7 @@ def test_scope_refuses_offdomain(fake, deps, kb_ship):
     o, _ = _session(fake, deps, kb_ship, intent="smalltalk", params={})
     # off-domain is caught by the deterministic prefilter before the LLM
     reply = o.send("what film should I watch tonight?")
-    from ttmd.interpretation import REFUSAL
+    from galene.interpretation import REFUSAL
     assert reply == REFUSAL
 
 
@@ -112,7 +112,7 @@ def test_consumption_guard_resolves_fuel_to_rate(deps, has_data):
 
 
 def test_wants_normal_check_guard():
-    from ttmd.chat_deps import ChatDeps
+    from galene.chat_deps import ChatDeps
     assert ChatDeps._wants_normal_check("does it look normal for the same distance")
     assert ChatDeps._wants_normal_check("is that usual?")
     assert not ChatDeps._wants_normal_check("how much fuel on the last voyage")
@@ -157,7 +157,7 @@ def test_voyage_efficiency_norm_verdict(deps, monkeypatch):
 
     def fake_aggregate(globs, signal, agg, label, unit=None, t_range=None):
         return _R(fuels[t_range])
-    import ttmd.query as _q
+    import galene.query as _q
     monkeypatch.setattr(_q, "aggregate", fake_aggregate)
 
     verdict = deps._voyage_efficiency_norm("engine", "EngineFuelRate", "L")
@@ -181,7 +181,7 @@ def test_voyage_efficiency_norm_honest_when_thin(deps, monkeypatch):
 
     def fake_aggregate(globs, signal, agg, label, unit=None, t_range=None):
         return _R(fuels[t_range])
-    import ttmd.query as _q
+    import galene.query as _q
     monkeypatch.setattr(_q, "aggregate", fake_aggregate)
 
     msg = deps._voyage_efficiency_norm("engine", "EngineFuelRate", "L")

@@ -9,8 +9,8 @@ import glob
 from collections import Counter
 
 import config
-from ttmd import term
-from ttmd.interpretation import KnowledgeBase
+from galene import term
+from galene.interpretation import KnowledgeBase
 
 
 def kb(asset_type: str) -> KnowledgeBase:

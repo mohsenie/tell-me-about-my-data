@@ -10,9 +10,9 @@ import numpy as np
 import pytest
 
 import config
-from ttmd.discovery.dependence import classify, Kind, pearson_abs
-from ttmd.discovery.loader import load_numeric
-from ttmd.discovery.relationships import (
+from galene.discovery.dependence import classify, Kind, pearson_abs
+from galene.discovery.loader import load_numeric
+from galene.discovery.relationships import (
     build_per_regime_graphs, graphs_for_fixed_regimes, clean_frame)
 
 
@@ -61,7 +61,7 @@ def test_graphs_for_fixed_regimes(has_data):
 
 # ---------------- fusion ----------------
 def test_fuse_sources_shape(has_data):
-    from ttmd.discovery.fusion import fuse_sources
+    from galene.discovery.fusion import fuse_sources
     srcs = [s for s in config.discover_sources()][:3]
     if len(srcs) < 2:
         pytest.skip("need >=2 sources")
@@ -75,7 +75,7 @@ def test_fuse_sources_shape(has_data):
 
 # ---------------- reporting ----------------
 def test_describe_discovery_structure(has_data):
-    from ttmd.reporting import describe_discovery
+    from galene.reporting import describe_discovery
     g = glob.glob(config.source_glob("engine"))
     cols, data = load_numeric(g)
     disc = build_per_regime_graphs(cols, data, with_mi=False)
@@ -87,7 +87,7 @@ def test_describe_discovery_structure(has_data):
 
 
 def test_render_markdown_nonempty(has_data):
-    from ttmd.reporting import describe_discovery, render_markdown
+    from galene.reporting import describe_discovery, render_markdown
     g = glob.glob(config.source_glob("engine"))
     cols, data = load_numeric(g)
     disc = build_per_regime_graphs(cols, data, with_mi=False)
@@ -98,7 +98,7 @@ def test_render_markdown_nonempty(has_data):
 # ---------------- timestamp / label-sequence plumbing ----------------
 def test_load_numeric_with_time_aligned_sorted(has_data):
     """load_numeric_with_time returns row-aligned, time-ordered timestamps."""
-    from ttmd.discovery.loader import load_numeric_with_time
+    from galene.discovery.loader import load_numeric_with_time
     g = glob.glob(config.source_glob("engine"))
     cols, data, ts = load_numeric_with_time(g)
     assert data.shape[0] == ts.shape[0]          # row-aligned
@@ -108,8 +108,8 @@ def test_load_numeric_with_time_aligned_sorted(has_data):
 
 def test_label_sequence_time_ordered(has_data):
     """label_sequence assigns a per-row regime label aligned with sorted times."""
-    from ttmd.discovery.loader import load_numeric, load_numeric_with_time
-    from ttmd.discovery.regimes import segment_regimes, label_sequence
+    from galene.discovery.loader import load_numeric, load_numeric_with_time
+    from galene.discovery.regimes import segment_regimes, label_sequence
     g = glob.glob(config.source_glob("engine"))
     cols, data, ts = load_numeric_with_time(g)
     c2, d2 = load_numeric(g)
@@ -126,7 +126,7 @@ def test_label_sequence_time_ordered(has_data):
 def test_partial_correlation_prunes_common_driver():
     """A common driver C->A, C->B makes A~B strong marginally but its PARTIAL
     correlation collapses -> flagged as induced (direct=False)."""
-    from ttmd.discovery.dependence import pairwise_dependence
+    from galene.discovery.dependence import pairwise_dependence
     rng = np.random.default_rng(0)
     C = rng.normal(size=4000)
     A = C + rng.normal(0, 0.3, size=4000)
@@ -142,7 +142,7 @@ def test_partial_correlation_prunes_common_driver():
 
 
 def test_partial_correlation_matrix_shape_and_none():
-    from ttmd.discovery.dependence import partial_correlation_matrix
+    from galene.discovery.dependence import partial_correlation_matrix
     rng = np.random.default_rng(1)
     data = rng.normal(size=(500, 4))
     m = partial_correlation_matrix(data)
@@ -155,7 +155,7 @@ def test_partial_correlation_matrix_shape_and_none():
 
 def test_induced_edge_phrasing():
     """An induced edge is described as INDIRECT, not a direct relationship."""
-    from ttmd.reporting import phrasing as ph
+    from galene.reporting import phrasing as ph
     edge = {"a": "boost_pressure", "b": "oil_pressure", "dcor": 0.8,
             "pearson": 0.81, "kind": "linear", "direct": False, "partial": 0.004}
     txt = ph.describe_edge(edge, False)
@@ -166,7 +166,7 @@ def test_induced_edge_phrasing():
 def test_block_permutation_flags_autocorrelation_phantom():
     """Two INDEPENDENT random walks look dependent (shared autocorrelation), but a
     time-aware block-permutation null does NOT call it strongly significant."""
-    from ttmd.discovery.dependence import (block_permutation_pvalue,
+    from galene.discovery.dependence import (block_permutation_pvalue,
                                            distance_correlation)
     rng = np.random.default_rng(0)
     a = np.cumsum(rng.normal(size=2000))
@@ -177,13 +177,13 @@ def test_block_permutation_flags_autocorrelation_phantom():
 
 
 def test_block_permutation_short_series_pvalue_one():
-    from ttmd.discovery.dependence import block_permutation_pvalue
+    from galene.discovery.dependence import block_permutation_pvalue
     assert block_permutation_pvalue(np.arange(5.0), np.arange(5.0)) == 1.0
 
 
 def test_pairwise_with_significance_annotates_edges():
     """with_significance adds pvalue + significant to candidate edges."""
-    from ttmd.discovery.dependence import pairwise_dependence
+    from galene.discovery.dependence import pairwise_dependence
     rng = np.random.default_rng(0)
     x = rng.normal(size=800)
     data = np.column_stack([x, 2 * x + rng.normal(0, 0.1, size=800),
@@ -196,7 +196,7 @@ def test_pairwise_with_significance_annotates_edges():
 
 # ---------------- fused clustering blur diagnostic ----------------
 def test_fused_relationship_graph_reports_quality(has_data):
-    from ttmd.discovery.fusion import fused_relationship_graph
+    from galene.discovery.fusion import fused_relationship_graph
     srcs = [s for s in config.discover_sources()][:3]
     if len(srcs) < 2:
         pytest.skip("need >=2 sources")

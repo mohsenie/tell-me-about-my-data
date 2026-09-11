@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ttmd.query.plots import (
+from galene.query.plots import (
     scatter, aggregated_series, timeseries, distance_series)
 
 

@@ -1,8 +1,8 @@
 """Command-line entry point — Relational Fingerprinting discovery.
 
 Usage:
-    ttmd discover <source>            # regimes + per-regime relationship graphs
-    ttmd discover engine --no-mi      # skip mutual information (faster)
+    galene discover <source>            # regimes + per-regime relationship graphs
+    galene discover engine --no-mi      # skip mutual information (faster)
 
 Reads partitioned ship data from ship-data/<vessel>/<source>/logs/date=*/*.parquet
 """
@@ -20,20 +20,20 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT))
 
 import config  # noqa: E402  (root-level project paths)
-from ttmd import term  # noqa: E402
-from ttmd.discovery.loader import load_numeric  # noqa: E402
-from ttmd.discovery.relationships import build_per_regime_graphs  # noqa: E402
-from ttmd.discovery.fusion import fuse_sources, is_cross_source  # noqa: E402
-from ttmd.reporting import describe_discovery, render_markdown  # noqa: E402
-from ttmd.interpretation import (  # noqa: E402
+from galene import term  # noqa: E402
+from galene.discovery.loader import load_numeric  # noqa: E402
+from galene.discovery.relationships import build_per_regime_graphs  # noqa: E402
+from galene.discovery.fusion import fuse_sources, is_cross_source  # noqa: E402
+from galene.reporting import describe_discovery, render_markdown  # noqa: E402
+from galene.interpretation import (  # noqa: E402
     get_provider, KnowledgeBase, interpret_report, apply_correction,
     check_scope, REFUSAL)
-from ttmd.query import (  # noqa: E402
+from galene.query import (  # noqa: E402
     list_capabilities, describe_capabilities, aggregate, fuel_consumption)
-from ttmd.query.plots import scatter, timeseries, aggregated_series  # noqa: E402
-from ttmd.interpretation.documents import DocumentIndex, extract_facts  # noqa: E402
+from galene.query.plots import scatter, timeseries, aggregated_series  # noqa: E402
+from galene.interpretation.documents import DocumentIndex, extract_facts  # noqa: E402
 
-from ttmd.cli_helpers import (  # noqa: E402
+from galene.cli_helpers import (  # noqa: E402
     kb as _kb, resolve_window as _resolve_window, present_globs,
     print_discovery_summary as _print_discovery_summary)
 
@@ -86,7 +86,7 @@ def cmd_fused(args) -> None:
     # RELATIONSHIPS are the trustworthy output, not the fused modes).
     reg = result.get("regimes", {})
     sil = reg.get("silhouette")
-    from ttmd.discovery.fusion import FUSED_SILHOUETTE_MIN
+    from galene.discovery.fusion import FUSED_SILHOUETTE_MIN
     if sil is not None and sil < FUSED_SILHOUETTE_MIN:
         print(f"\nNOTE: fused regimes are blurred (silhouette {sil:.2f} < "
               f"{FUSED_SILHOUETTE_MIN}) — fusing dissimilar sources lowers regime "
@@ -105,10 +105,10 @@ def cmd_fused(args) -> None:
 def cmd_baseline(args) -> None:
     """Set a KNOWN-GOOD baseline fingerprint for a source over a window.
 
-    ttmd baseline engine --from 2026-09-01 --to 2026-09-03
+    galene baseline engine --from 2026-09-01 --to 2026-09-03
     The window should be a period the operator considers healthy/normal.
     """
-    from ttmd.anomaly import build_baseline, save_baseline
+    from galene.anomaly import build_baseline, save_baseline
     globs, label = _resolve_window(args.source, args.vessel, args.days,
                                    getattr(args, "from"), args.to)
     dates = _selected_dates(args.source, args.vessel, args.days,
@@ -130,11 +130,11 @@ def cmd_baseline(args) -> None:
 
 def cmd_detect(args) -> None:
     """Compare a window to the known-good baseline and report drift."""
-    from ttmd.anomaly import load_baseline, has_baseline, detect_drift
-    from ttmd.anomaly.report import render_drift
+    from galene.anomaly import load_baseline, has_baseline, detect_drift
+    from galene.anomaly.report import render_drift
     if not has_baseline(args.source):
         sys.exit(f"no baseline for '{args.source}'. Set one first: "
-                 f"ttmd baseline {args.source} --from <date> --to <date>")
+                 f"galene baseline {args.source} --from <date> --to <date>")
     dates = _selected_dates(args.source, args.vessel, args.days,
                             getattr(args, "from"), args.to)
     if not dates:
@@ -163,7 +163,7 @@ def cmd_report(args) -> None:
     """Human-readable data-intelligence report from a discovery artifact."""
     art = config.ARTIFACTS_DIR / f"discovery_{args.source}.json"
     if not art.exists():
-        sys.exit(f"no discovery artifact for '{args.source}'. Run `ttmd discover {args.source}` first.")
+        sys.exit(f"no discovery artifact for '{args.source}'. Run `galene discover {args.source}` first.")
     artifact = json.loads(art.read_text())
     report = describe_discovery(artifact, args.source)
     md = render_markdown(report)
@@ -177,7 +177,7 @@ def cmd_interpret(args) -> None:
     """Report + LLM root-cause hypotheses (asset-aware), preferring confirmed KB."""
     art = config.ARTIFACTS_DIR / f"discovery_{args.source}.json"
     if not art.exists():
-        sys.exit(f"no discovery artifact for '{args.source}'. Run `ttmd discover {args.source}` first.")
+        sys.exit(f"no discovery artifact for '{args.source}'. Run `galene discover {args.source}` first.")
     report = describe_discovery(json.loads(art.read_text()), args.source)
     kb = _kb(_asset_type(args))
     provider = get_provider()
@@ -208,7 +208,7 @@ def cmd_ingest_docs(args) -> None:
 
     Extracted facts are stored as a DISTINCT, unverified tier (source=document),
     combined with expert-confirmed knowledge to improve reasoning. Needs an LLM
-    provider (set TTMD_LLM=bedrock) for real extraction.
+    provider (set GALENE_LLM=bedrock) for real extraction.
     """
     if not (config.USER_DOC_DIR.is_dir() and any(config.USER_DOC_DIR.glob("*.pdf"))):
         sys.exit(f"no PDFs in {config.USER_DOC_DIR}")
@@ -257,17 +257,17 @@ def cmd_review_docs(args) -> None:
             print()
         if not ext:
             print("No document-extracted facts awaiting review. "
-                  "Run `ttmd ingest-docs` to extract from manuals.")
+                  "Run `galene ingest-docs` to extract from manuals.")
             return
         print(f"{len(ext)} extracted fact(s) awaiting review "
               "(promote = vouch/authoritative, reject = remove):\n")
         for f in ext:
             print(f"  [{f['id']}] {f['fact']}  [{f.get('citation','doc')}]")
-        print("\nPromote: ttmd review-docs promote <id>")
-        print("Reject:  ttmd review-docs reject <id>")
+        print("\nPromote: galene review-docs promote <id>")
+        print("Reject:  galene review-docs reject <id>")
     elif args.action in ("promote", "reject"):
         if not args.fact_id:
-            sys.exit(f"{args.action} needs a fact id. Run `ttmd review-docs list` first.")
+            sys.exit(f"{args.action} needs a fact id. Run `galene review-docs list` first.")
         try:
             fact = (kb.promote_fact(args.fact_id) if args.action == "promote"
                     else kb.reject_fact(args.fact_id))
@@ -283,8 +283,8 @@ def cmd_describe_fields(args) -> None:
     Proposals are stored as an unverified 'field_semantics' tier for expert
     review (promote). Protocol context comes from ship-data/<vessel>/sources.yaml.
     """
-    from ttmd.query.capabilities import list_capabilities
-    from ttmd.interpretation.fields import describe_fields
+    from galene.query.capabilities import list_capabilities
+    from galene.interpretation.fields import describe_fields
 
     globs = {args.source: config.source_glob(args.source, args.vessel)}
     caps = list_capabilities(globs)
@@ -399,8 +399,8 @@ def cmd_chat(args) -> None:
     prerequisites, and runs missing ones on confirmation. Plain-language:
     ask for fields, values, plots, correlations, reasoning, or give corrections.
     """
-    from ttmd.interpretation.orchestrator import Orchestrator
-    from ttmd.chat_deps import ChatDeps
+    from galene.interpretation.orchestrator import Orchestrator
+    from galene.chat_deps import ChatDeps
 
     provider = get_provider(meter=getattr(args, "usage", False))
     kb = _kb(_asset_type(args))
@@ -500,7 +500,7 @@ def cmd_correct(args) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="ttmd", description="Relational Fingerprinting — zero-knowledge discovery.")
+        prog="galene", description="Relational Fingerprinting — zero-knowledge discovery.")
     sub = parser.add_subparsers(dest="command", required=True)
     d = sub.add_parser("discover", help="regimes + per-regime relationship graphs")
     d.add_argument("source", help="source name, e.g. engine / vibration / nmea")

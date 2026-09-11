@@ -371,7 +371,7 @@ def detect_legs(globs: list[str], lat_col: str, lon_col: str,
     Returns [{index, from, to, from_place, to_place, t_start, t_end, duration_h,
     distance_km}], most recent LAST. `from`/`to` are labels (place name or coords).
     Data-agnostic: column names are role-resolved by the caller; nothing hardcoded."""
-    from ttmd.anomaly.behavioral import detect_stops
+    from galene.anomaly.behavioral import detect_stops
     places = places or []
     stops = detect_stops(globs, lat_col, lon_col, move_km=move_km,
                          min_stop_s=min_stop_s)

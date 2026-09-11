@@ -21,7 +21,7 @@ sys.path.insert(0, str(_ROOT))
 sys.path.insert(0, str(_ROOT / "src"))
 
 import config  # noqa: E402
-from ttmd.interpretation.provider import LLMProvider  # noqa: E402
+from galene.interpretation.provider import LLMProvider  # noqa: E402
 
 
 # ---- fake, deterministic LLM provider for dispatch tests -------------------
@@ -90,13 +90,13 @@ def globs():
 
 @pytest.fixture
 def stub_provider():
-    from ttmd.interpretation.provider import StubProvider
+    from galene.interpretation.provider import StubProvider
     return StubProvider()
 
 
 @pytest.fixture
 def kb_ship():
-    from ttmd.cli_helpers import kb
+    from galene.cli_helpers import kb
     return kb("ship")
 
 
@@ -104,7 +104,7 @@ def kb_ship():
 def deps(stub_provider, kb_ship, vessel):
     """ChatDeps wired with the offline stub — for testing the DETERMINISTIC
     capability methods (routing, resolution, spatial, anomaly, per_ratio...)."""
-    from ttmd.chat_deps import ChatDeps
+    from galene.chat_deps import ChatDeps
     return ChatDeps("ship", stub_provider, kb_ship, vessel)
 
 

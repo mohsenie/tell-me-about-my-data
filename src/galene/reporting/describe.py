@@ -188,7 +188,7 @@ def render_markdown(report: dict) -> str:
                  "future report smarter. Use:")
         L.append("")
         L.append("```")
-        L.append('ttmd correct "SignalA" "SignalB" "your reason" \\')
+        L.append('galene correct "SignalA" "SignalB" "your reason" \\')
         L.append('    --general-fact "the general truth about this asset"')
         L.append("```")
         L.append("")

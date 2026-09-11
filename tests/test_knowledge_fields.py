@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from ttmd.interpretation.knowledge import KnowledgeBase
-from ttmd.interpretation.fields import _parse_json_array
+from galene.interpretation.knowledge import KnowledgeBase
+from galene.interpretation.fields import _parse_json_array
 
 
 # ---------------- KnowledgeBase ----------------
@@ -94,7 +94,7 @@ def test_promote_unknown_id_raises(tmp_path):
 
 # ---------------- LLM usage metering (token/cost logging) ----------------
 def test_usage_meter_counts_and_estimates():
-    from ttmd.interpretation.provider import UsageMeter, StubProvider
+    from galene.interpretation.provider import UsageMeter, StubProvider
     m = UsageMeter(StubProvider())
     m.complete("system prompt here", "user message one")
     m.complete("system two", "user message two longer")
@@ -107,7 +107,7 @@ def test_usage_meter_counts_and_estimates():
 
 
 def test_get_provider_meter_flag():
-    from ttmd.interpretation.provider import get_provider, UsageMeter
+    from galene.interpretation.provider import get_provider, UsageMeter
     assert isinstance(get_provider(meter=True), UsageMeter)
     assert not isinstance(get_provider(meter=False), UsageMeter)
 

@@ -27,8 +27,8 @@ Confidence scales with how many periods / samples define the comparison.
 from __future__ import annotations
 
 import config
-from ttmd.discovery.loader import load_numeric
-from ttmd.discovery.relationships import graphs_for_fixed_regimes
+from galene.discovery.loader import load_numeric
+from galene.discovery.relationships import graphs_for_fixed_regimes
 from .baseline import _fingerprint_from_fixed, _edge_key
 
 

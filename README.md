@@ -17,11 +17,15 @@ learns). See `SPEC.md` for the method and invariants.
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e .
-export TTMD_LLM=bedrock          # real reasoning (else a stub keeps it runnable)
+export GALENE_LLM=bedrock          # real reasoning (else a stub keeps it runnable)
 
-ttmd chat               # vessel-scoped; defaults to the only/first vessel
-ttmd chat vessel-001    # or name the vessel explicitly
+galene chat               # vessel-scoped; defaults to the only/first vessel
+galene chat vessel-001    # or name the vessel explicitly
 ```
+
+> Legacy note: the old command name `ttmd` still works as an alias, and legacy
+> `TTMD_*` env vars are honored as a fallback (e.g. `TTMD_LLM=bedrock`). Prefer
+> `galene` / `GALENE_*` going forward.
 
 ### Choosing a persona mode when you open the chat
 
@@ -29,13 +33,13 @@ The chat tailors HOW it explains things to your audience (the numbers/analysis a
 identical across modes — only the wording and level of detail change):
 
 ```bash
-ttmd chat --mode operator     # business/operations: short, plain, no jargon
+galene chat --mode operator     # business/operations: short, plain, no jargon
                               #   e.g. "the ship is staying in one place longer than usual"
-ttmd chat --mode technician   # engineer: which signals/couplings changed + what to check
-ttmd chat --mode analyst      # data analyst (DEFAULT): full detail with the numbers
+galene chat --mode technician   # engineer: which signals/couplings changed + what to check
+galene chat --mode analyst      # data analyst (DEFAULT): full detail with the numbers
 
-ttmd chat vessel-001 --mode operator          # combine with a vessel
-ttmd chat vessel-001 --source engine --mode technician
+galene chat vessel-001 --mode operator          # combine with a vessel
+galene chat vessel-001 --source engine --mode technician
 ```
 
 You can also switch mid-conversation — just say **"switch to business mode"**,
@@ -105,7 +109,7 @@ has stayed in one location ~24h, about 37x its usual stay." Surfaced first when 
 ask "is there anything to worry about". Needs no baseline (the norm is the asset's
 own past); it reports the change, never the cause.
 
-**Presentation modes:** `ttmd chat --mode operator|technician|analyst` (or "switch
+**Presentation modes:** `galene chat --mode operator|technician|analyst` (or "switch
 to business mode" mid-chat) tailors HOW answers are explained — operator gets
 short plain-language framing ("the ship is staying in one place longer than
 usual"), technician gets component/action detail, analyst (default) gets the full
@@ -144,32 +148,32 @@ INGEST DATA  parquet in ship-data/  (edge-collected, time-fused)
 
 ```bash
 # discovery (no LLM)
-ttmd discover engine [--days 2 | --from .. --to ..]
-ttmd fused                             # auto-fuse all sources -> cross-source
-ttmd report engine
+galene discover engine [--days 2 | --from .. --to ..]
+galene fused                             # auto-fuse all sources -> cross-source
+galene report engine
 
 # anomaly detection (no LLM): set a known-good baseline, then flag drift from it
-ttmd baseline engine --from 2026-09-01 --to 2026-09-02   # a period you consider healthy
-ttmd detect  engine --days 2           # compare recent window to the baseline
+galene baseline engine --from 2026-09-01 --to 2026-09-02   # a period you consider healthy
+galene detect  engine --days 2           # compare recent window to the baseline
 #   -> layers: within-mode relationship drift (possible fault) + regime events
 #      (usage change) + SEQUENCING change (the order modes occur in — new/missing
 #      steps); reports the change, never asserts the cause
 
 # querying / plotting (deterministic, no LLM)
-ttmd capabilities [engine]             # what signals exist (+ why some aren't queryable)
-ttmd query engine avg --signal EngineSpeed --days 2
-ttmd plot engine trend --signal EngineCoolantTemperature --agg avg --bucket 4h --days 2
-ttmd plot engine scatter --x EngineSpeed --y EngineFuelRate
+galene capabilities [engine]             # what signals exist (+ why some aren't queryable)
+galene query engine avg --signal EngineSpeed --days 2
+galene plot engine trend --signal EngineCoolantTemperature --agg avg --bucket 4h --days 2
+galene plot engine scatter --x EngineSpeed --y EngineFuelRate
 
-# meaning + reasoning + learning (needs TTMD_LLM=bedrock)
-ttmd describe-fields engine            # protocol-aware field meanings (reviewable)
-ttmd interpret engine                  # report + cited LLM hypotheses
-ttmd correct "EngineSpeed" "FuelTemperature" "reason" --general-fact "asset truth"
-ttmd ingest-docs                       # pre-analyze user-documentation/*.pdf -> facts
-ttmd review-docs list                  # review learned facts by tier (stable ids)
-ttmd review-docs promote <id>          # extracted -> expert-confirmed
-ttmd review-docs reject <id>           # remove a wrong extracted fact
-ttmd chat --usage                      # track LLM tokens + estimated cost this session
+# meaning + reasoning + learning (needs GALENE_LLM=bedrock)
+galene describe-fields engine            # protocol-aware field meanings (reviewable)
+galene interpret engine                  # report + cited LLM hypotheses
+galene correct "EngineSpeed" "FuelTemperature" "reason" --general-fact "asset truth"
+galene ingest-docs                       # pre-analyze user-documentation/*.pdf -> facts
+galene review-docs list                  # review learned facts by tier (stable ids)
+galene review-docs promote <id>          # extracted -> expert-confirmed
+galene review-docs reject <id>           # remove a wrong extracted fact
+galene chat --usage                      # track LLM tokens + estimated cost this session
 ```
 
 ## Data & metadata (user-provided, nothing hardcoded)
@@ -197,7 +201,7 @@ The LLM proposes/routes/reasons; deterministic code computes; the expert confirm
 
 ```
 config.py                    paths, source + asset-type + protocol metadata, windows
-src/ttmd/
+src/galene/
   cli.py, cli_helpers.py, chat_deps.py, term.py
   io/                        DuckDB data access
   discovery/                 THE METHOD (dependence, regimes, relationships, fusion)
@@ -218,9 +222,9 @@ artifacts/                   discovery_*.json, report_*.md, knowledge_*.json, pl
 ## LLM (Amazon Bedrock)
 
 ```bash
-export TTMD_LLM=bedrock
+export GALENE_LLM=bedrock
 # defaults: eu-west-1, eu.anthropic.claude-haiku-4-5 (regional inference profile)
-# override: TTMD_BEDROCK_REGION, TTMD_BEDROCK_MODEL
+# override: GALENE_BEDROCK_REGION, GALENE_BEDROCK_MODEL
 ```
 Without a provider, a StubProvider keeps the non-LLM pipeline runnable.
 
@@ -230,7 +234,7 @@ Without a provider, a StubProvider keeps the non-LLM pipeline runnable.
 pip install pytest pytest-cov
 python -m pytest tests/                       # functional suite (no LLM needed)
 python -m pytest tests/ --cov --cov-config=.coveragerc   # with coverage
-TTMD_LLM=bedrock python -m pytest tests/      # also run the live intent-classification case
+GALENE_LLM=bedrock python -m pytest tests/      # also run the live intent-classification case
 ```
 Deterministic functional tests assert OUTCOMES (computed values, files created,
 structure) on the sample vessel data — no live LLM required (a `FakeProvider`
@@ -241,7 +245,7 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
 ## Notes
 
 - Distance correlation uses the fast O(n log n) algorithm (`dcor`), ~100x faster
-  than naive, identical results. See `src/ttmd/discovery/README.md`.
+  than naive, identical results. See `src/galene/discovery/README.md`.
 - **Direct vs indirect links:** partial correlation (controlling for all other
   signals) flags edges that are strong only because of a shared driver (e.g. two
   pressures that both track engine load), so the report separates a real
@@ -259,8 +263,8 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
   voyage" — it segments the track into port-calls, treats the gaps as legs
   (place-named, with distance and duration), and totals the rate over the most
   recent leg without you giving any coordinates.
-- **Three anomaly detectors, all built:** (1) *relational drift* — `ttmd baseline`
-  then `ttmd detect`, or ask "has anything drifted" — flags within-mode
+- **Three anomaly detectors, all built:** (1) *relational drift* — `galene baseline`
+  then `galene detect`, or ask "has anything drifted" — flags within-mode
   relationship-structure change (possible fault) + regime events (usage change) +
   regime-transition/sequencing change (the order operating modes occur in — a
   usual step missing or a new jump appearing), vs a known-good baseline;
@@ -275,7 +279,7 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
   that grows with calendar length is baseline-building (per-day loop). See
   `TODO.md` for remaining hardening (geocoding place names, discovery-quality
   refinements).
-- **Optional autoencoder backend** (`ttmd detect --ae`, off by default): a per-regime
+- **Optional autoencoder backend** (`galene detect --ae`, off by default): a per-regime
   MLP autoencoder for regimes whose normal region is a nonlinear manifold a
   covariance ellipsoid can't fit; reconstruction error scores each point, per-feature
   error keeps the attribution. Opt-in because it trades the training-free character

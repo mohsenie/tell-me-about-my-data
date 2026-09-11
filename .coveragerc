@@ -3,11 +3,11 @@
 #  - io/parquet_reader.py: alternate reader not on the query path
 #  - constants.py, __init__.py: trivial
 [run]
-source = src/ttmd
+source = src/galene
 omit =
-    src/ttmd/cli.py
-    src/ttmd/io/parquet_reader.py
-    src/ttmd/constants.py
+    src/galene/cli.py
+    src/galene/io/parquet_reader.py
+    src/galene/constants.py
     */__init__.py
 
 [report]
