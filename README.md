@@ -23,10 +23,6 @@ galene chat               # vessel-scoped; defaults to the only/first vessel
 galene chat vessel-001    # or name the vessel explicitly
 ```
 
-> Legacy note: the old command name `ttmd` still works as an alias, and legacy
-> `TTMD_*` env vars are honored as a fallback (e.g. `TTMD_LLM=bedrock`). Prefer
-> `galene` / `GALENE_*` going forward.
-
 ### Choosing a persona mode when you open the chat
 
 The chat tailors HOW it explains things to your audience (the numbers/analysis are

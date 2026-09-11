@@ -8,12 +8,8 @@ from abc import ABC, abstractmethod
 
 
 def _env(name: str, default: str | None = None) -> str | None:
-    """Read a GALENE_<name> env var, falling back to the legacy TTMD_<name> so
-    existing setups (e.g. `export TTMD_LLM=bedrock`) keep working. GALENE_ wins."""
-    val = os.environ.get(f"GALENE_{name}")
-    if val is not None:
-        return val
-    return os.environ.get(f"TTMD_{name}", default)
+    """Read a GALENE_<name> env var (e.g. GALENE_LLM=bedrock)."""
+    return os.environ.get(f"GALENE_{name}", default)
 
 
 class LLMProvider(ABC):
@@ -50,8 +46,7 @@ class BedrockProvider(LLMProvider):  # pragma: no cover - needs AWS creds
     Notes learned from the live account:
     - eu-west-1 requires the regional inference-profile prefix, e.g.
       'eu.anthropic.claude-haiku-4-5-20251001-v1:0' (bare model IDs 404 on Converse).
-    - Configurable via env: GALENE_BEDROCK_REGION, GALENE_BEDROCK_MODEL
-      (legacy TTMD_BEDROCK_* still honored).
+    - Configurable via env: GALENE_BEDROCK_REGION, GALENE_BEDROCK_MODEL.
     """
 
     DEFAULT_REGION = "eu-west-1"
@@ -141,8 +136,8 @@ class UsageMeter(LLMProvider):
 
 
 def get_provider(meter: bool = False) -> LLMProvider:
-    """Select a provider from env (GALENE_LLM=bedrock|stub; legacy TTMD_LLM also
-    honored). Defaults to stub. meter=True wraps it in a UsageMeter."""
+    """Select a provider from env (GALENE_LLM=bedrock|stub). Defaults to stub.
+    meter=True wraps it in a UsageMeter for token/cost logging."""
     kind = (_env("LLM", "stub") or "stub").lower()
     inner = BedrockProvider() if kind == "bedrock" else StubProvider()
     return UsageMeter(inner) if meter else inner

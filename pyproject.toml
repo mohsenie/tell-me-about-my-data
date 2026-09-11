@@ -16,9 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-# `galene` is the command; `ttmd` kept as a thin backward-compatible alias.
 galene = "galene.cli:main"
-ttmd = "galene.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -702,9 +702,8 @@ def test_presentation_modes():
     assert run_modes() == 0
 
 
-@_pytest.mark.skipif(
-    (_os.environ.get("GALENE_LLM") or _os.environ.get("TTMD_LLM", "")).lower() != "bedrock",
-    reason="intent classification needs a live LLM (GALENE_LLM=bedrock)")
+@_pytest.mark.skipif(_os.environ.get("GALENE_LLM", "").lower() != "bedrock",
+                     reason="intent classification needs a live LLM (GALENE_LLM=bedrock)")
 def test_intent_classification():
     from galene.interpretation import get_provider
     provider = get_provider()
