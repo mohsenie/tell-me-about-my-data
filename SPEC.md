@@ -255,7 +255,7 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   notice — then answers in the same turn. Routes intents (capabilities /
   describe_fields / value / plot / trend / relationship / reasoning / correction /
   position / nearby / voyage / efficiency / distance / between / geo / anomaly /
-  summarize / regimes). Verified end-to-end.
+  summarize / regimes / coverage). Verified end-to-end.
 - **Vessel-scoped source routing**: chat is scoped to the vessel, not a single
   source. Each question is routed to the source that can answer it — position ->
   a GPS/AIS source (lat/lon), nearby -> a multi-vessel AIS source (lat/lon + id),
@@ -461,6 +461,27 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   window + integral. Verified: EngineFuelRate over an ais-own-derived window,
   integrated on engine. Place names return a helpful "give coordinates" message
   (geocoder is a deferred, opt-in follow-up — no hardcoded place data).
+- **Nearby entities per distance (distinct-new, asset-agnostic)**: "how many new
+  <ships/trucks/...> nearby per 10 km of the last trip" walks the own track into
+  distance buckets, finds OTHER entities within a radius at sampled instants, and
+  counts per bucket only ids first seen there (cumulative-unique). The entity noun
+  is derived from asset_type ("other ships"/"other trucks"), the trigger is generic
+  proximity (not a hardcoded "ship" word). Approximate (sampled per bucket) — stated.
+- **Source data coverage over a journey (asset-agnostic, observed-not-cause)**:
+  "for what % of the last trip did the engine/ECU report data / was it used"
+  measures DATA COVERAGE, not on/off. Trip window from the position source (or a
+  plain time window if none); the source's timestamps split the window into COVERED
+  spans vs no-data GAPS (a gap = absence longer than the source's OWN median
+  sampling interval x a factor — data-driven, not hardcoded). Each gap is annotated
+  with what the asset was doing then (MOVING ~Nkm / STATIONARY, from the position
+  track — skipped if no position source). CRITICAL discipline: a gap is NOT proof
+  the source/engine was OFF — it could equally be a telemetry/logging dropout; the
+  data can't distinguish. The system reports the coverage % + per-gap movement as
+  FACTS and flags no-data-WHILE-MOVING as the more notable case, but never converts
+  a gap into an "engine off" number. "If this source only reports when active, the
+  gap ≈ off time" is offered as the operator's domain knowledge, never a data
+  conclusion. Generic: any intermittent source, any asset (ship engine / truck ECU
+  / a fixed asset with no position — movement annotation simply omitted).
 - Interpretation: per-relationship + cross-relationship hypotheses, cited to the
   DPX-600 manual; LLM calls run in PARALLEL (~20 calls -> ~15s not ~90s).
 - Learning loop: correction overrides guess; `--general-fact` generalizes.

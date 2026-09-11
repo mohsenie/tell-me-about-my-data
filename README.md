@@ -102,7 +102,8 @@ capabilities · field descriptions · values · plots · correlations · reasoni
 corrections · position · nearby (vessels near a point at a time; also NEW nearby
 vessels per N km of travel along a voyage) · voyage · efficiency (fuel per km,
 value or a per-distance chart) · distance (how far travelled) · between (distance
-between two named vessels) · geo (signal by location) · anomaly · summarize ·
+between two named vessels) · geo (signal by location) · coverage (how much of a trip a source
+reported data + what the asset was doing during gaps) · anomaly · summarize ·
 regimes (operating modes / usage patterns). Off-domain questions are refused.
 
 **Behavioral-norm alerts:** beyond sensor-fault drift, it watches how the asset is
@@ -134,6 +135,16 @@ geographic cells of the track and reports where it's high/low (sea-state by area
 track, buckets it by distance, and counts DISTINCT-new vessels first seen in each
 bucket (within ~10 km), so you see where traffic was densest — honest that it's
 sampled per bucket (a brief passer-by between samples can be missed).
+
+"For what % of the last trip did the engine report data?" measures DATA COVERAGE,
+not on/off: the source's timestamps split the trip window into covered spans and
+no-data gaps (a gap = absence longer than that source's own typical sampling
+interval), and each gap is annotated with what the asset was doing then (moving
+~N km / stationary, from the position track). Crucially it does NOT claim the gap
+means the engine was off — a gap could be a telemetry dropout, and the data can't
+tell which; it reports the facts and flags no-data-while-moving as the notable
+case, leaving "gap ≈ off" as your call. Works for any intermittent source on any
+asset (a ship's engine, a truck's ECU), position-optional.
 
 Per-distance charts work for ANY
 signal, not just fuel: "plot velocity_z every 10km" averages it per distance

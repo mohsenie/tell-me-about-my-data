@@ -148,6 +148,20 @@ REMAINING:
 - [x] **Spatially-windowed plots**: "plot velocity_z from <coord> to <coord> every
       30 min" -> a trend plot restricted to the voyage window (aggregated_series
       t_range), distinct from a voyage consumption total.
+- [ ] **Source data coverage over a journey (asset-agnostic, observed-not-cause)**:
+      "for what % of the last trip did the engine/ECU report data / was it used".
+      Measures DATA COVERAGE, not on/off. Trip window from the position source (or a
+      plain time window if none); source timestamps split the window into COVERED
+      spans vs no-data GAPS (gap = absence > source's OWN median sampling interval x
+      factor — data-driven). Each gap annotated MOVING ~Nkm / STATIONARY from the
+      position track (skipped if no position source). DISCIPLINE: a gap is NOT proof
+      the source was OFF (could be a dropout) — report coverage % + per-gap movement
+      as FACTS, flag no-data-WHILE-MOVING as more notable, NEVER emit an "engine off"
+      number; "gap ≈ off if this source only reports when active" is the operator's
+      knowledge, not a data conclusion. Generic: any intermittent source, any asset
+      (ship engine / truck ECU / fixed asset w/o position). To build: query/spatial
+      source_coverage() + ChatDeps.source_coverage + a routing guard (coverage/used/
+      reported + a source + trip/journey). Then functional tests + this box -> [x].
 - [x] **New nearby vessels per N km of travel (distinct-new)**: "how many new ships
       nearby per 10 km on the last voyage" — spatial.nearby_new_per_distance walks
       the own track (distance_segments buckets), samples own position per bucket,
