@@ -531,6 +531,17 @@ class Orchestrator:
             # Drift detection needs a KNOWN-GOOD baseline, which only the operator
             # can designate (which period was healthy). So unlike discovery, we
             # can't auto-run it — we ask for the window if none is set.
+            # BROAD scope ("my data", "all/each/every source", "anywhere") -> sweep
+            # every source; a specifically-named source stays single. Deterministic.
+            low = message.lower()
+            broad = any(w in low for w in ("all source", "all data source",
+                                           "each source", "every source", "all sources",
+                                           "across sources", "my data", "the data",
+                                           "any data", "anywhere", "all of them",
+                                           "everything", "any source"))
+            named = any(s.lower() in low for s in d.all_sources())
+            if broad and not named:
+                return d.detect_anomaly_all(message)
             return d.detect_anomaly(src, message)
 
         if intent == "summarize":

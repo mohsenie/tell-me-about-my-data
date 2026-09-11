@@ -194,7 +194,12 @@ def partial_correlation_matrix(data: np.ndarray) -> np.ndarray | None:
     std = data.std(axis=0)
     std = np.where(std == 0, 1.0, std)
     z = (data - data.mean(axis=0)) / std
-    corr = np.corrcoef(z, rowvar=False)
+    # a constant column yields all-zeros here; np.corrcoef then divides by a zero
+    # norm and emits a benign RuntimeWarning. The ridge below handles the singular
+    # result, so silence just that warning rather than leak it to the user.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr = np.corrcoef(z, rowvar=False)
+    corr = np.nan_to_num(corr, nan=0.0)             # constant-col rows -> 0 corr
     corr = np.atleast_2d(corr) + 1e-3 * np.eye(p)   # ridge for invertibility
     try:
         prec = np.linalg.inv(corr)

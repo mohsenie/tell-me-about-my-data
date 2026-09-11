@@ -1539,6 +1539,51 @@ class ChatDeps:
                     if isinstance(s, dict) and s.get("signal"):
                         s["meaning"] = self._signal_label(source, s["signal"], sem)
 
+    def _drift_for_source(self, source):
+        """The per-source baseline-drift portion of an anomaly check (NO behavioral
+        block — that's vessel-level and reported once by the caller). Returns a
+        rendered string: the drift report if a baseline exists, else a short
+        'no baseline for <source>' note. Stashes _last_drift when it ran a detect."""
+        from galene.anomaly import has_baseline, load_baseline, detect_drift
+        from galene.anomaly.report import render_drift
+        dates = config.available_dates(source, self.vessel)
+        if not dates:
+            return f"'{source}': no data."
+        if not has_baseline(source):
+            first, last = dates[0], dates[-1]
+            return (f"'{source}': no known-good baseline yet — set one to enable the "
+                    f"fault/relationship check:\n"
+                    f"  galene baseline {source} --from {first} --to <a-healthy-end-date> "
+                    f"(available {first} .. {last}).")
+        baseline = load_baseline(source)
+        base_dates = set(baseline.get("dates", []))
+        recent = [d for d in dates if d not in base_dates] or dates[-2:]
+        result = detect_drift(source, recent, self.vessel, baseline, with_mi=False)
+        self._last_drift = {"source": source, "result": result,
+                            "behavioral": self.behavioral_flags(source)}
+        self._label_drift_signals(source, result)
+        return render_drift(result)
+
+    def detect_anomaly_all(self, message):
+        """Anomaly check across EVERY source on the vessel. The BEHAVIORAL check is
+        vessel-level (position track) so it's reported ONCE; the baseline-drift
+        check runs per source. Fixes 'anomalies in ALL data sources' only looking
+        at the active source."""
+        sources = self.all_sources()
+        if not sources:
+            return "No data sources found for this vessel."
+        # behavioral (vessel-level) — once, no baseline needed
+        behavioral = self.behavioral_flags(sources[0])
+        parts = []
+        if behavioral:
+            parts.append("BEHAVIOR (vs the asset's own history):\n"
+                         + "\n".join("  - " + f for f in behavioral))
+        # per-source baseline-drift
+        parts.append("PER-SOURCE relationship/structure check:")
+        for src in sources:
+            parts.append(self._drift_for_source(src))
+        return "\n\n".join(parts)
+
     def explain_drift(self, message):
         """Explain the LAST detected drift/behavioral change (a chat 'why?' follow-
         up). Grounds the LLM in the STRUCTURED detector findings + expert-confirmed

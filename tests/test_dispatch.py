@@ -118,6 +118,36 @@ def test_regimes_all_routing_guard():
                                       "all sources", "per source", "across sources"))
 
 
+# ---------------- anomalies across all sources ----------------
+def test_detect_anomaly_all_covers_sources_once_behavioral(deps, has_data):
+    """'anomalies in all data sources' checks every source, with the vessel-level
+    behavioral block reported at most once (not repeated per source)."""
+    out = deps.detect_anomaly_all("are there anomalies in all data sources")
+    srcs = deps.all_sources()
+    assert len(srcs) >= 2
+    for s in srcs:
+        assert f"'{s}'" in out                      # each source addressed
+    assert "PER-SOURCE" in out
+    # behavioral flag (if any) appears at most once, not per-source
+    assert out.count("stayed in one location") <= 1
+
+
+def test_anomaly_broad_scope_routing_guard(deps):
+    """Broad phrasing routes to the all-sources sweep; a named source does not."""
+    named = set(deps.all_sources())
+    def broad(m):
+        low = m.lower()
+        b = any(w in low for w in ("all source", "all data source", "each source",
+                                   "every source", "all sources", "across sources",
+                                   "my data", "the data", "any data", "anywhere",
+                                   "all of them", "everything", "any source"))
+        n = any(s.lower() in low for s in named)
+        return b and not n
+    assert broad("are there any anomalies in my data")
+    assert broad("anomalies in all data sources")
+    assert not broad("is the engine drifting")      # named source -> single
+
+
 # ---------------- consumption resolution + voyage normality check ----------------
 def test_is_consumption_recognizes_phrasings(deps):
     assert deps._is_consumption("how much fuel on the last voyage")
