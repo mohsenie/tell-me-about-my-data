@@ -744,17 +744,19 @@ class ChatDeps:
         # If the message names a TIME ("yesterday at 15:00", "2 hours ago"), give
         # the position AT that instant; otherwise the most recent fix.
         tmin, tmax = self._time_range(globs)
-        at = parse_instant(message, tmin, tmax)
+        from galene.query.timeparse import parse_instant_explained
+        at, anchor_note = parse_instant_explained(message, tmin, tmax)
         from galene.query.spatial import place_label
         places = config.known_places(self.vessel)
         if at is not None:
             fix = self._position_at(globs, lat, lon, at, tolerance_s=1800)
             when = _dt.datetime.utcfromtimestamp(at).strftime("%Y-%m-%d %H:%M UTC")
+            suffix = (" " + anchor_note) if anchor_note else ""
             if not fix:
                 return (f"No position fix near {when} (no data within 30 min of "
-                        "that time).")
+                        "that time)." + suffix)
             return (f"Position at {when}: "
-                    f"{place_label(fix['lat'], fix['lon'], places)} (lat, lon).")
+                    f"{place_label(fix['lat'], fix['lon'], places)} (lat, lon)." + suffix)
         pos = current_position(globs, lat, lon)
         if not pos:
             return "No position data available."

@@ -109,9 +109,32 @@ def _win():
 ])
 def test_parse_instant(phrase, expected):
     lo, hi = _win()
-    e = parse_instant(phrase, lo, hi)
+    # pin `now` just after the data window so the hybrid anchor treats it as LIVE
+    # (relative phrases anchor to the latest reading) — deterministic regardless of
+    # when the test actually runs.
+    now = hi + 3600
+    e = parse_instant(phrase, lo, hi, now=now)
     got = dt.datetime.utcfromtimestamp(e).strftime("%Y-%m-%d %H:%M") if e else None
     assert got == expected
+
+
+def test_parse_instant_hybrid_anchor_and_note():
+    """Relative phrases anchor to NOW when data is live (no note); to the latest
+    reading when historic (with an explanatory note). Absolute dates: no note."""
+    from galene.query.timeparse import parse_instant_explained
+    lo, hi = _win()                                   # data ends 2026-09-05 12:02
+    # historic: now far from the data -> anchor to latest reading + note
+    now_hist = hi + 30 * 24 * 3600                     # ~30 days later
+    e, note = parse_instant_explained("2 days ago", lo, hi, now=now_hist)
+    assert dt.datetime.utcfromtimestamp(e).strftime("%Y-%m-%d") == "2026-09-03"
+    assert "latest reading" in note and "2026-09-03" in note
+    # live: now within 48h -> anchor to NOW, no note
+    now_live = hi + 3600
+    e2, note2 = parse_instant_explained("2 days ago", lo, hi, now=now_live)
+    assert note2 == ""
+    # absolute date carries no anchor note in either case
+    _, note3 = parse_instant_explained("on 2026-09-02", lo, hi, now=now_hist)
+    assert note3 == ""
 
 
 # ---------------- spatial ----------------
