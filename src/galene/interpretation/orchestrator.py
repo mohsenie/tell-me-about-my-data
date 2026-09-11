@@ -403,6 +403,32 @@ class Orchestrator:
 
         intent = next((i for i in INTENTS if i in raw_intent), "reasoning")
 
+        # DETERMINISTIC GUARD (unsupported): "how many nearby ships/vessels per
+        # <distance>" asks to COUNT nearby vessels bucketed along the track — a
+        # capability we don't have (nearby = vessels near a point at a TIME;
+        # efficiency = a numeric signal per distance). Without this guard the
+        # "per km" phrasing pulls it into efficiency and fabricates a FUEL answer.
+        # Be honest that it's not supported rather than answer a different question.
+        import re as _re0
+        _low0 = message.lower()
+        _about_nearby = any(w in _low0 for w in ("nearby", "ships near", "vessels near",
+                                                 "other ships", "other vessels",
+                                                 "ships around", "vessels around"))
+        _per_distance = bool(_re0.search(
+            r"(per|every|each)\s*\d*\s*(km|kilomet|mile|nm|nautical)", _low0))
+        _counting = any(w in _low0 for w in ("how many", "number of", "count", "how much"))
+        if _about_nearby and _per_distance and _counting:
+            reply = ("I can't yet count NEARBY VESSELS per unit of distance. Today I "
+                     "can tell you which ships were nearby at a given TIME "
+                     "('what's nearby now' / 'ships nearby at 14:00'), and I can give "
+                     "a numeric SIGNAL per distance (e.g. fuel per 20 km) — but not "
+                     "'new nearby ships per 10 km along the trip'. Want the nearby "
+                     "vessels at a specific time instead?")
+            self.history.append({"role": "user", "text": message})
+            self.history.append({"role": "assistant", "text": reply})
+            self._last_intent = "nearby"
+            return reply
+
         # DETERMINISTIC GUARD (compound trip+consumption): a question that pairs a
         # TRIP word ("voyage/trip/leg") with a fuel/consumption/total word is a
         # voyage-consumption question — even when the LLM calls it "ambiguous"
