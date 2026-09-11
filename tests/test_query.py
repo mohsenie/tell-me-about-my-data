@@ -14,7 +14,8 @@ from galene.query import (
     aggregate, list_capabilities, describe_capabilities,
     current_position, ships_nearby, voyage_window, track_distance_km,
     distance_segments, entity_position_at, haversine_km, signal_by_location,
-    nearest_place, place_label, detect_legs, nearby_new_per_distance)
+    nearest_place, place_label, detect_legs, nearby_new_per_distance,
+    source_coverage)
 from galene.query.timeparse import parse_instant
 
 
@@ -270,6 +271,52 @@ def test_nearby_new_per_distance_empty_track():
     res = nearby_new_per_distance([], [], "lat", "lon", "lat", "lon", "id",
                                   bucket_km=20.0)
     assert res["buckets"] == [] and res["total_distinct"] == 0
+
+
+# ---------------- source data coverage over a journey ----------------
+def test_source_coverage_gap_while_moving(tmp_path):
+    """A source silent 300-900s over a 0-1200s window = 50% coverage, one gap,
+    annotated MOVING because the position track kept moving during it. The gap
+    threshold is derived from the source's OWN median interval (data-driven)."""
+    # source reports every 10s for 0..300 and 900..1200, silent between
+    eng_t = [float(t) for t in list(range(0, 301, 10)) + list(range(900, 1201, 10))]
+    _write_parquet(tmp_path / "eng.parquet", [(t, 100.0) for t in eng_t],
+                   ["timestamp", "rpm"])
+    # own position every 30s across the WHOLE window, moving east (~2.2 km/step)
+    own_t = [float(t) for t in range(0, 1201, 30)]
+    own_rows = [(own_t[i], 0.0, round(i * 0.02, 5)) for i in range(len(own_t))]
+    _write_parquet(tmp_path / "own.parquet", own_rows,
+                   ["timestamp", "latitude", "longitude"])
+    res = source_coverage([str(tmp_path / "eng.parquet")], t_range=(0, 1200),
+                          position_globs=[str(tmp_path / "own.parquet")],
+                          pos_lat_col="latitude", pos_lon_col="longitude")
+    assert abs(res["coverage_fraction"] - 0.5) < 0.02      # ~half the window
+    assert res["n_gaps"] == 1
+    g = res["gaps"][0]
+    assert g["moving"] is True and g["distance_km"] > 1.0   # moved during the gap
+    assert "not proof" in res["note"].lower()              # gap != off, honestly
+
+
+def test_source_coverage_full_no_gaps(tmp_path):
+    """A continuously-reporting source over its window -> ~100% coverage, no gaps."""
+    ts = [(float(t), 1.0) for t in range(0, 1000, 5)]
+    _write_parquet(tmp_path / "s.parquet", ts, ["timestamp", "v"])
+    res = source_coverage([str(tmp_path / "s.parquet")], t_range=(0, 995))
+    assert res["coverage_fraction"] >= 0.99 and res["n_gaps"] == 0
+
+
+def test_source_coverage_position_optional(tmp_path):
+    """With no position source, gaps are still found but movement is unknown
+    (moving=None) — the capability degrades gracefully for a fixed asset."""
+    eng_t = [float(t) for t in list(range(0, 301, 10)) + list(range(900, 1201, 10))]
+    _write_parquet(tmp_path / "eng.parquet", [(t, 1.0) for t in eng_t],
+                   ["timestamp", "v"])
+    res = source_coverage([str(tmp_path / "eng.parquet")], t_range=(0, 1200))
+    assert res["n_gaps"] == 1
+    assert res["gaps"][0]["moving"] is None                # no position -> unknown
+
+
+# ---------------- voyage / leg auto-detection ----------------
 
 
 # ---------------- voyage / leg auto-detection ----------------

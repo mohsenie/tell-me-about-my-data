@@ -351,6 +351,105 @@ def nearby_new_per_distance(own_globs: list[str], other_globs: list[str],
     }
 
 
+# a no-data stretch counts as a GAP once it exceeds the source's OWN median
+# inter-sample interval times this factor (so ordinary sampling jitter isn't a gap)
+_GAP_FACTOR = 5.0
+# a gap shorter than this (seconds) is ignored regardless (avoids noise on
+# very-high-rate sources where median*factor is tiny)
+_MIN_GAP_S = 60.0
+# during a gap, the asset is treated as MOVING if it covered more than this
+_GAP_MOVE_KM = 1.0
+
+
+def source_coverage(source_globs: list[str], t_range: tuple[float, float] | None = None,
+                    position_globs: list[str] | None = None,
+                    pos_lat_col: str | None = None, pos_lon_col: str | None = None
+                    ) -> dict:
+    """DATA-COVERAGE of a source over a journey/window — NOT on/off.
+
+    Measures what fraction of the window the source actually REPORTED data, and
+    splits the no-data time into GAPS. A gap is a stretch longer than the source's
+    OWN median inter-sample interval x _GAP_FACTOR (data-driven — not hardcoded per
+    source), so normal sampling jitter isn't counted. If a position source is given,
+    each gap is annotated with what the asset was doing then (moving ~Nkm /
+    stationary), which is factual context the operator can interpret.
+
+    CRITICAL: a gap is NOT proof the source (e.g. an engine) was OFF — it could be a
+    telemetry/logging dropout. This returns the OBSERVED coverage + per-gap movement;
+    it never asserts 'off'. Asset-agnostic: any intermittent source, position
+    optional. Returns {coverage_fraction, covered_s, window_s, n_gaps, gaps:
+    [{t_start,t_end,dur_s,moving,distance_km}], median_interval_s, gap_threshold_s,
+    note}."""
+    con = duckdb.connect()
+    src = _src(source_globs)
+    where = ""
+    if t_range:
+        lo, hi = sorted(t_range)
+        where = f"WHERE timestamp BETWEEN {lo} AND {hi}"
+    ts = [float(r[0]) for r in con.execute(
+        f"SELECT timestamp FROM {src} {where} ORDER BY timestamp").fetchall()
+        if r[0] is not None]
+    con.close()
+    if len(ts) < 2:
+        return {"coverage_fraction": 0.0, "covered_s": 0.0,
+                "window_s": 0.0, "n_gaps": 0, "gaps": [],
+                "median_interval_s": None, "gap_threshold_s": None,
+                "note": "too few timestamps to assess coverage."}
+
+    # window bounds: the trip window if given, else the source's own span
+    win_lo = min(t_range) if t_range else ts[0]
+    win_hi = max(t_range) if t_range else ts[-1]
+    window_s = max(win_hi - win_lo, 1e-9)
+
+    # data-driven cadence: median inter-sample interval
+    diffs = sorted(ts[i + 1] - ts[i] for i in range(len(ts) - 1))
+    median_dt = diffs[len(diffs) // 2] if diffs else 0.0
+    gap_threshold = max(median_dt * _GAP_FACTOR, _MIN_GAP_S)
+
+    # find gaps: consecutive samples farther apart than the threshold, PLUS the
+    # window edges (from win_lo to first sample, last sample to win_hi).
+    edges = [win_lo] + ts + [win_hi]
+    gaps = []
+    covered_s = 0.0
+    for a, b in zip(edges[:-1], edges[1:]):
+        d = b - a
+        if d <= 0:
+            continue
+        if d > gap_threshold:
+            gaps.append({"t_start": a, "t_end": b, "dur_s": d})
+        else:
+            covered_s += d
+    # coverage = window time NOT inside a gap
+    gap_total = sum(g["dur_s"] for g in gaps)
+    covered_s = max(window_s - gap_total, 0.0)
+
+    # annotate each gap with movement from the position track (if available)
+    if position_globs and pos_lat_col and pos_lon_col:
+        for g in gaps:
+            dist = track_distance_km(position_globs, pos_lat_col, pos_lon_col,
+                                     t_range=(g["t_start"], g["t_end"]))
+            g["distance_km"] = round(dist, 1)
+            g["moving"] = dist > _GAP_MOVE_KM
+    else:
+        for g in gaps:
+            g["distance_km"] = None
+            g["moving"] = None
+
+    gaps.sort(key=lambda g: g["dur_s"], reverse=True)
+    return {
+        "coverage_fraction": round(covered_s / window_s, 4),
+        "covered_s": round(covered_s, 1),
+        "window_s": round(window_s, 1),
+        "n_gaps": len(gaps),
+        "gaps": gaps,
+        "median_interval_s": round(median_dt, 3),
+        "gap_threshold_s": round(gap_threshold, 1),
+        "note": ("Coverage = fraction of the window the source REPORTED data. A gap "
+                 "is NOT proof the source was off — it can equally be a telemetry/"
+                 "logging dropout; the data can't tell which."),
+    }
+
+
 def entity_position_at(globs, lat_col, lon_col, id_col, name_col, term,
                        at_epoch, tolerance_s=3600):
     """Position of a named/identified entity closest to `at_epoch`.

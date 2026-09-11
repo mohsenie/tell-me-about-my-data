@@ -961,6 +961,70 @@ class ChatDeps:
         lines.append(res["note"])
         return "\n".join(lines)
 
+    def source_coverage(self, source, message):
+        """DATA-COVERAGE of `source` over the last trip: what fraction of the trip
+        window it reported data, with no-data gaps annotated moving/stationary.
+        Observed-not-cause: a gap is NOT asserted to mean the source/engine was OFF
+        (could be a dropout). Asset-agnostic; position optional."""
+        from galene.query import source_coverage as _cov
+        import datetime as _dt
+        src_globs = present_globs([config.source_glob(source, self.vessel)])
+        if not src_globs:
+            return f"No data for '{source}'."
+        # trip window: the last detected voyage/leg (else the whole record)
+        leg = self._last_leg()
+        t_range = (leg["t_start"], leg["t_end"]) if leg else None
+        # position source for movement annotation (optional)
+        pos_src = self._own_position_source()
+        pos_globs = plat = plon = None
+        if pos_src:
+            plat, plon = self._latlon_cols(pos_src)
+            pos_globs = present_globs([config.source_glob(pos_src, self.vessel)])
+        res = _cov(src_globs, t_range=t_range, position_globs=pos_globs,
+                   pos_lat_col=plat, pos_lon_col=plon)
+        if res.get("median_interval_s") is None:
+            return (f"'{source}' has too little data over "
+                    + ("the last trip" if leg else "the record")
+                    + " to assess coverage.")
+        cov = res["coverage_fraction"]
+        cov_h = res["covered_s"] / 3600.0
+        win_h = res["window_s"] / 3600.0
+        where = (f"the last voyage ({leg['from']} -> {leg['to']}, "
+                 f"~{leg['distance_km']:.0f} km, {win_h:.1f} h)" if leg
+                 else f"the available record ({win_h:.1f} h)")
+        lines = [f"'{source}' reported data for {cov*100:.0f}% of {where} "
+                 f"(~{cov_h:.1f} of {win_h:.1f} h)."]
+        gaps = res["gaps"]
+        if not gaps:
+            lines.append("No significant no-data gaps — it reported throughout.")
+        else:
+            # split gap time by what the asset was doing (if position available)
+            moving = [g for g in gaps if g.get("moving") is True]
+            stationary = [g for g in gaps if g.get("moving") is False]
+            unknown = [g for g in gaps if g.get("moving") is None]
+            mv_h = sum(g["dur_s"] for g in moving) / 3600.0
+            st_h = sum(g["dur_s"] for g in stationary) / 3600.0
+            un_h = sum(g["dur_s"] for g in unknown) / 3600.0
+            lines.append(f"No data for the remaining {(1-cov)*100:.0f}% "
+                         f"({res['n_gaps']} gap(s)):")
+            if moving:
+                mv_km = sum(g.get("distance_km") or 0 for g in moving)
+                lines.append(f"  - while MOVING: ~{mv_h:.1f} h (~{mv_km:.0f} km "
+                             "travelled with no data from this source) — the more "
+                             "notable case, worth a look.")
+            if stationary:
+                lines.append(f"  - while STATIONARY: ~{st_h:.1f} h (consistent with "
+                             "the source being idle/off, but not proof).")
+            if unknown:
+                lines.append(f"  - {un_h:.1f} h with no position data to say "
+                             "moving vs stationary.")
+        lines.append("Note: a no-data gap is NOT proof the source was off — it can "
+                     "equally be a telemetry/logging dropout; the data can't tell "
+                     "which. If this source only reports when active, the gaps "
+                     "correspond to inactive time — but that's your knowledge of the "
+                     "equipment, not something the data proves.")
+        return "\n".join(lines)
+
     def distance_between(self, source, message):
         """Distance between TWO named other entities (e.g. 'JORO' and 'HARRIS') at
         a time. Resolves each name in the multi-entity source, gets each one's

@@ -403,6 +403,34 @@ class Orchestrator:
 
         intent = next((i for i in INTENTS if i in raw_intent), "reasoning")
 
+        # DETERMINISTIC GUARD (source data coverage): "for what % of the last trip
+        # was the engine USED / did it REPORT data / what's the ECU's uptime" is a
+        # DATA-COVERAGE question, not on/off and not a regime split. Route it to
+        # source_coverage (measures reporting coverage + annotates no-data gaps
+        # moving/stationary, never asserts 'off'). Asset-neutral: keys off
+        # coverage/used/report/uptime + a trip word, on a NAMED source.
+        _lowc = message.lower()
+        _cov_word = any(w in _lowc for w in ("coverage", "report data", "reported data",
+                                             "reporting", "uptime", "was used", "in use",
+                                             "was the engine used", "did the engine",
+                                             "how much of the", "what percentage",
+                                             "what % ", "% of the"))
+        _trip_word = any(w in _lowc for w in ("trip", "journey", "voyage", "leg",
+                                              "last"))
+        _named_src = next((s for s in self.deps.all_sources()
+                           if s.lower() in _lowc), None)
+        # also match an engine-ish word -> the source that owns rate/engine signals
+        if _cov_word and _trip_word and (_named_src or "engine" in _lowc
+                                         or "ecu" in _lowc or "motor" in _lowc):
+            cov_src = _named_src or self.deps.route_source(
+                "value", message, {}, self.source)
+            reply = self._frame("coverage", message,
+                                self.deps.source_coverage(cov_src, message))
+            self.history.append({"role": "user", "text": message})
+            self.history.append({"role": "assistant", "text": reply})
+            self._last_intent = "coverage"
+            return reply
+
         # DETERMINISTIC GUARD: "how many nearby <entities> per <distance>" asks to
         # COUNT nearby entities bucketed along the track — routed to the real
         # per-distance capability. ASSET-NEUTRAL: the trigger is proximity

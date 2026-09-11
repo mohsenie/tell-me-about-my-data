@@ -122,6 +122,37 @@ def test_regimes_all_routing_guard():
                                       "all sources", "per source", "across sources"))
 
 
+# ---------------- source data coverage over a journey ----------------
+def test_coverage_question_routes_to_source_coverage(fake, deps, kb_ship, has_data):
+    """'for what % of the last trip was the engine used' routes to source_coverage
+    (data coverage), NOT regimes or a fabricated on/off number, and keeps the
+    honest 'a gap is not proof it was off' caveat."""
+    o, _ = _session(fake, deps, kb_ship, intent="regimes", params={})   # router guess
+    reply = o.send("for what percentage of the last journey was the engine used?")
+    low = reply.lower()
+    assert "reported data for" in low               # the coverage phrasing
+    assert "not proof" in low                        # gap != off honesty
+    # never a fabricated 'engine off X%' claim
+    assert "engine was off" not in low and "% off" not in low
+
+
+def test_coverage_guard_scope():
+    """The coverage guard fires for coverage/used/report + a trip word + a source;
+    a plain regimes or value question is unaffected."""
+    def fires(m, sources=("engine", "nmea")):
+        low = m.lower()
+        cov = any(w in low for w in ("coverage", "report data", "reported data",
+                                     "reporting", "uptime", "was used", "in use",
+                                     "how much of the", "what percentage", "% of the"))
+        trip = any(w in low for w in ("trip", "journey", "voyage", "leg", "last"))
+        named = any(s in low for s in sources)
+        return cov and trip and (named or "engine" in low or "ecu" in low)
+    assert fires("for what percentage of the last journey was the engine used?")
+    assert fires("how much of the last trip did the ecu report data")  # truck ECU
+    assert not fires("what operating modes are there")   # regimes, untouched
+    assert not fires("average engine speed yesterday")   # value, untouched
+
+
 # ---------------- nearby-vessels-per-distance (distinct-new) ----------------
 def test_nearby_per_distance_routes_to_real_capability(fake, deps, kb_ship, has_data):
     """'how many nearby ships per 10km' now routes to the real per-distance
