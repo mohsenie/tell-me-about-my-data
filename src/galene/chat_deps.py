@@ -1651,6 +1651,24 @@ class ChatDeps:
                      "(idle, cruise, ...) are yours to assign.)")
         return "\n".join(lines)
 
+    def describe_regimes_all(self, message):
+        """Describe operating modes for EVERY source on the vessel (for 'list usage
+        patterns for all sources'). Auto-runs discovery per source as needed;
+        concatenates each source's regime description."""
+        sources = self.all_sources()
+        if not sources:
+            return "No data sources found for this vessel."
+        blocks = []
+        for src in sources:
+            if not self.has_discovery(src):
+                try:
+                    self.run_discovery(src)
+                except Exception:
+                    blocks.append(f"'{src}': couldn't analyze (skipped).")
+                    continue
+            blocks.append(self.describe_regimes(src, message))
+        return "\n\n".join(blocks)
+
     def behavioral_flags(self, source=None):
         """Behavioral-norm check: does the asset's recent BEHAVIOR depart from its
         own history? First behavior: dwell time at a location ('stayed longer than

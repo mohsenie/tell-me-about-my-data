@@ -544,6 +544,13 @@ class Orchestrator:
             return notice + d.summarize(src, message)
 
         if intent == "regimes":
+            # "for ALL sources / each source / every source" -> describe every one,
+            # not just the active source. Deterministic phrasing check.
+            low = message.lower()
+            if any(w in low for w in ("all source", "all data source", "each source",
+                                      "every source", "all sources", "per source",
+                                      "across sources", "all of them", "everything")):
+                return d.describe_regimes_all(message)
             # Operating modes come from discovery -> auto-run it if missing.
             notice = ""
             if not d.has_discovery(src):

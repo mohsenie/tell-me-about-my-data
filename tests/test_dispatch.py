@@ -90,6 +90,34 @@ def test_scope_refuses_offdomain(fake, deps, kb_ship):
     assert reply == REFUSAL
 
 
+# ---------------- regimes across all sources ----------------
+def test_describe_regimes_all_covers_every_source(deps, has_data):
+    """'usage patterns for all sources' describes every source, not just one."""
+    out = deps.describe_regimes_all("list usage patterns for all sources")
+    srcs = deps.all_sources()
+    assert len(srcs) >= 2
+    # each source is named in the combined output
+    for s in srcs:
+        assert f"'{s}'" in out
+    # and it actually reports operating modes
+    assert "operating mode" in out
+
+
+def test_regimes_all_routing_guard():
+    """The orchestrator routes 'all/each/every source' to the all-sources path."""
+    for m in ["list usage patterns for all data sources",
+              "what regimes does each source have",
+              "operating modes across sources"]:
+        low = m.lower()
+        assert any(w in low for w in ("all source", "all data source", "each source",
+                                      "every source", "all sources", "per source",
+                                      "across sources", "all of them", "everything"))
+    # a single-source ask must NOT trip the all-sources guard
+    low = "list usage patterns for engine".lower()
+    assert not any(w in low for w in ("all source", "each source", "every source",
+                                      "all sources", "per source", "across sources"))
+
+
 # ---------------- consumption resolution + voyage normality check ----------------
 def test_is_consumption_recognizes_phrasings(deps):
     assert deps._is_consumption("how much fuel on the last voyage")
