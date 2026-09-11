@@ -69,8 +69,24 @@ def describe_capabilities(caps: dict) -> str:
         for e in ex:
             lines.append(f"  - {e['name']}  [not queryable: {e['reason']}]")
         lines.append("")
-    lines.append("Example requests:")
-    lines.append('  - "total fuel consumption for the past 2 days"')
-    lines.append('  - "average engine speed yesterday"')
-    lines.append('  - "max coolant temperature over the last 3 days"')
+    examples = _example_requests(caps)
+    if examples:
+        lines.append("Example requests:")
+        lines += [f'  - "{e}"' for e in examples]
     return "\n".join(lines)
+
+
+def _example_requests(caps: dict) -> list[str]:
+    """Build example queries from the ACTUAL queryable signals (data-agnostic —
+    no hardcoded fuel/engine names). Picks real signals from the described sources
+    and phrases avg/max/plot queries over a window."""
+    picks = []
+    for src, info in caps.items():
+        for s in info.get("signals", []):
+            picks.append(s["name"])
+    if not picks:
+        return []
+    templates = ["average {sig} over the last 2 days",
+                 "max {sig} yesterday",
+                 "plot {sig} over the last 3 days"]
+    return [t.format(sig=picks[i]) for i, t in enumerate(templates) if i < len(picks)]

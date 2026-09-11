@@ -74,6 +74,24 @@ def test_capabilities_lists_signals_and_excludes_constants(has_data):
     assert "engine" in text and "queryable" in text
 
 
+def test_capabilities_examples_use_real_signals(has_data):
+    """Example requests are built from the source's ACTUAL signals — not hardcoded
+    engine/fuel names. A vibration query must not mention fuel/engine/coolant."""
+    from galene.query.capabilities import _example_requests
+    caps = list_capabilities({"vibration": config.source_glob("vibration")})
+    real = {s["name"] for s in caps["vibration"]["signals"]}
+    ex = _example_requests(caps)
+    assert ex, "expected example requests"
+    # every example references a real vibration signal, none the old hardcoded ones
+    for e in ex:
+        assert any(sig in e for sig in real)
+    text = describe_capabilities(caps).lower()
+    for bad in ("fuel consumption", "engine speed", "coolant temperature"):
+        assert bad not in text
+    # empty caps -> no examples, no crash
+    assert _example_requests({}) == []
+
+
 # ---------------- timeparse ----------------
 def _win():
     lo = float(calendar.timegm(dt.datetime(2026, 9, 1, 0, 0).timetuple()))
