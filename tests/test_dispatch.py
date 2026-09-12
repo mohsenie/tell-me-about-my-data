@@ -383,6 +383,20 @@ def test_anomaly_detail_expands_one_source(deps, has_data):
     assert "Drift check for" in detail                 # the full render, not the roll-up
 
 
+def test_bare_yes_after_anomaly_offer_expands_detail(fake, deps, kb_ship, has_data):
+    """Regression: after an anomaly roll-up that OFFERED to 'dig into the <source>
+    detail', a bare 'yes' must expand that detail — not fall through to intent
+    classification and ask 'which signal?'."""
+    o, _ = _session(fake, deps, kb_ship, intent="value", params={})
+    # simulate the state right after the roll-up: last intent + one cached detail
+    o._last_intent = "anomaly"
+    deps._anomaly_details = {"engine": "Drift check for 'engine': (full report...)"}
+    reply = o.send("yes")
+    assert "which signal" not in reply.lower()         # NOT misrouted
+    assert "Drift check for" in reply or "engine" in reply.lower()
+    assert o._last_intent == "anomaly"
+
+
 def test_anomaly_broad_scope_routing_guard(deps):
     """Broad phrasing routes to the all-sources sweep; a named source does not."""
     named = set(deps.all_sources())

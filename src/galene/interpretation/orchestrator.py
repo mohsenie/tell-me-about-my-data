@@ -426,21 +426,31 @@ class Orchestrator:
             return reply
 
         # "show <source> detail" FOLLOW-UP: after the all-sources anomaly roll-up,
-        # a request to expand one source's full breakdown. Deterministic.
+        # a request to expand one source's full breakdown. Deterministic. Also
+        # accepts a bare AFFIRMATIVE ("yes"/"sure") when the roll-up offered to
+        # "dig into the <source> detail" — otherwise a plain "yes" fell through to
+        # intent classification and got misrouted (e.g. "which signal?").
         if getattr(self, "_last_intent", None) == "anomaly":
-            low = message.lower()
-            if any(w in low for w in ("detail", "details", "breakdown", "full",
-                                      "expand", "more on", "show me")):
-                named = next((s for s in self.deps.all_sources() if s.lower() in low),
-                             None)
-                if named or "detail" in low or "breakdown" in low:
-                    target = named or self.source
-                    reply = self._frame("anomaly", message,
-                                        self.deps.anomaly_detail(target))
-                    self.history.append({"role": "user", "text": message})
-                    self.history.append({"role": "assistant", "text": reply})
-                    self._last_intent = "anomaly"
-                    return reply
+            low = message.lower().strip()
+            _detail_word = any(w in low for w in (
+                "detail", "details", "breakdown", "full", "expand", "more on",
+                "show me", "dig"))
+            _affirm = low.rstrip("!. ") in (
+                "yes", "yeah", "yep", "sure", "ok", "okay", "please", "please do",
+                "go on", "go ahead", "do it", "yes please")
+            named = next((s for s in self.deps.all_sources() if s.lower() in low),
+                         None)
+            if _detail_word or _affirm or named:
+                # target: a named source, else the single source we have detail for,
+                # else the home source.
+                cached = list((getattr(self.deps, "_anomaly_details", {}) or {}).keys())
+                target = named or (cached[0] if len(cached) == 1 else None) or self.source
+                reply = self._frame("anomaly", message,
+                                    self.deps.anomaly_detail(target))
+                self.history.append({"role": "user", "text": message})
+                self.history.append({"role": "assistant", "text": reply})
+                self._last_intent = "anomaly"
+                return reply
 
         # "why?" FOLLOW-UP: if the previous answer was an anomaly/summary result
         # and the user asks a short causal follow-up, EXPLAIN the detected change
