@@ -428,6 +428,68 @@ a lot of what decomposition would, so item 5 is a last resort.
 
 ---
 
+## P1 — Actors layer + watches (notify the right person when something changes)
+
+Turns Galene from ask-on-demand into watch-and-react, and gives it a notion of
+WHO to tell. Two connected features; build the actors layer first (independently
+useful), then watches consume it.
+
+### Actors layer (LLM-based CRUD) — the "who is Andrew?" directory
+A small, user-editable registry of ACTORS (people now; ROLES + org relationships
+in a later iteration) so a watch can say "notify Andrew" and the system resolves
+it — asking a clarifying question when ambiguous ("which Andrew — the technician
+or the captain?"). Same shape as the existing knowledge CRUD (facts/corrections)
+and the same clarify-on-ambiguity pattern as signal resolution (_NeedsClarification
+/ _resolve_or_ask).
+
+- [x] **Actor registry + store** — DONE. interpretation/actors.py (ActorRegistry),
+      persisted JSON at artifacts/actors.json (global). Each actor has a stable id,
+      `kind` ("person" now; "role" later), name, `contact` (label only), and empty
+      `roles`/`relationships` lists as the forward-compat seams for roles/org.
+- [x] **CRUD functions** — DONE. add (idempotent by kind+name) / list (all/get) /
+      update / delete on the store, id-stable, JSON-persisted.
+- [x] **resolve_actor(name) with clarify-on-ambiguity** — DONE. 1 match -> actor;
+      0 -> None (caller says "I don't know an <name>"); >1 -> raises AmbiguousActor
+      with candidates. ChatDeps.resolve_actor maps that to NeedsClarification.
+- [x] **Chat intents for actor CRUD** — DONE. New `actors` intent (orchestrator
+      INTENTS + classifier prompt + _ACTOR_SYSTEM extraction + _dispatch_actors);
+      ChatDeps.add_actor/list_actors/delete_actor. Scope gate updated to treat
+      people/actor management as in-domain. Verified live (add/list/remove route
+      correctly; off-domain still refused). Tested (tests/test_actors.py + dispatch).
+- [ ] **NOTE — no enforced auth yet (deliberate).** An "admin can edit actors"
+      concept is a SOFT marker only; there is NO authentication/authorization in
+      the system today. Real admin-only enforcement is a separate security build
+      (later iteration). Do not imply protection that isn't there.
+- [ ] **LATER ITERATION — roles + relationships.** People<->role links ("Andrew
+      holds engine-room-technician"), role resolution ("notify the captain" ->
+      whoever holds it / all holders), optional org structure (reports-to). The
+      `kind` + relationship fields above are the seam for this.
+- [ ] **LATER ITERATION — authentication/authorization.** Real actor identity +
+      admin-gated editing. Separate, larger build; explicitly out of scope now.
+
+### Watches (watch-and-react) — consumes the actors layer
+Named, persisted watches managed through the chat: create / list / delete, each
+with a CONDITION and a NOTIFY target (resolved via the actors layer). Detection
+already exists (relational drift, behavioral-norm, joint, regime/sequencing);
+this is the alerting/CRUD layer on top. Batch/periodic by design (a `watch run`
+you cron or a Kiro hook), NOT real-time streaming.
+
+- [ ] **Watch registry + CRUD** (create/list/delete, persisted JSON), id-stable,
+      addressable by description ("the watch on engine temperature").
+- [ ] **Two condition types to start:** DRIFT (reuses detect_drift; needs a known-
+      good baseline — check + prompt if missing) and THRESHOLD (a computed value/
+      voyage-leg total crossing a user-given bound, e.g. "fuel > 150 L per journey";
+      record the unit).
+- [ ] **Evaluation (`watch run`):** evaluate watches against NEW data since last
+      run (incremental window + de-dup so the same event doesn't re-alert), gate by
+      severity. Honest alerts: report the OBSERVED change (which couplings / which
+      value), never assert a cause; rank, don't cry-wolf (invariant #6).
+- [ ] **Action, split from trigger:** default = write a structured alert to a
+      file/log + exit code (scriptable, no assumptions). DELIVERY (webhook/email to
+      the resolved actor) is a separate OPT-IN network action, later.
+
+---
+
 ## P2 — LLM / interpretation
 
 - [x] **Cost/token logging** — DONE. provider.UsageMeter wraps any provider and

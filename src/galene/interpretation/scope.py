@@ -37,6 +37,10 @@ _IN_DOMAIN = {
     "max", "maximum", "min", "minimum", "total", "sum", "value", "values",
     "measure", "metric", "metrics", "analyze", "analyse", "describe", "capable",
     "capabilities", "what can", "why", "when", "how much", "how many",
+    "add", "remove", "delete", "create", "set up", "setup", "watch", "watches",
+    # actors directory: people/roles to notify (managing WHO)
+    "actor", "actors", "crew", "person", "people", "staff", "team", "notify",
+    "technician", "captain", "engineer", "operator", "mechanic", "who is",
     # time words
     "yesterday", "today", "days", "day", "hour", "hours", "week", "month",
     "window", "past", "last", "over",
@@ -55,7 +59,10 @@ _CLASSIFY_SYSTEM = (
     "IN scope = anything about THIS asset's sensor data OR about using the tool: "
     "signals/fields, values, plots, correlations, operating modes, anomalies, "
     "reports, AND meta questions like 'what can I ask?', 'what fields are there?', "
-    "'help', 'what can you do?'. "
+    "'help', 'what can you do?'. ALSO IN scope: managing the directory of PEOPLE / "
+    "actors to notify (add/list/remove a person and their role, e.g. 'add Andrew "
+    "as the engine room technician', 'who is the captain', 'remove Maria') and "
+    "setting up watches/alerts on the data. "
     "OUT of scope = general knowledge, entertainment, opinions, coding, world "
     "facts, personal advice. "
     "When unsure, lean IN (it's a data tool; users ask about their data). "

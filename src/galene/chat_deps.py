@@ -94,6 +94,66 @@ class ChatDeps:
         self.provider = provider
         self.kb = kb
         self.vessel = vessel
+        self._actors = None   # lazily loaded ActorRegistry (see actor_registry)
+
+    def actor_registry(self):
+        """The actors directory (global). Lazily loaded so tests/paths stay cheap."""
+        if self._actors is None:
+            from galene.cli_helpers import actor_registry
+            self._actors = actor_registry()
+        return self._actors
+
+    # --- actors CRUD (people now; roles + org relationships later) ---
+    def add_actor(self, name, description="", contact_label=None):
+        """Add (or update) an actor. Idempotent by name — a repeat name updates
+        the existing entry rather than creating a duplicate."""
+        if not (name or "").strip():
+            return "I need a name to add an actor (e.g. 'add Andrew as the engine room technician')."
+        a = self.actor_registry().add(name.strip(), description=description or "",
+                                      contact_label=contact_label)
+        desc = f" — {a['description']}" if a.get("description") else ""
+        return f"Saved actor '{a['name']}'{desc}. (id {a['id']})"
+
+    def list_actors(self):
+        actors = self.actor_registry().all()
+        if not actors:
+            return ("No actors on file yet. Add one, e.g. 'add Andrew as the engine "
+                    "room technician'.")
+        lines = ["Actors on file:"]
+        for a in actors:
+            desc = f" — {a['description']}" if a.get("description") else ""
+            lines.append(f"  - {a['name']}{desc} (id {a['id']})")
+        return "\n".join(lines)
+
+    def delete_actor(self, name):
+        """Delete an actor named `name`. Resolves the name; if ambiguous, asks
+        which one (never guesses); if unknown, says so."""
+        from galene.interpretation.actors import AmbiguousActor
+        reg = self.actor_registry()
+        try:
+            a = reg.resolve(name)
+        except AmbiguousActor as e:
+            opts = "; ".join(f"{c['name']} ({c.get('description') or 'no description'}, id {c['id']})"
+                             for c in e.candidates)
+            raise NeedsClarification(
+                f"There are {len(e.candidates)} actors named '{name}': {opts}. "
+                "Which one should I delete (give the id)?")
+        if not a:
+            return f"I don't have an actor called '{name}'."
+        reg.delete(a["id"])
+        return f"Deleted actor '{a['name']}' (id {a['id']})."
+
+    def resolve_actor(self, name):
+        """Resolve `name` to one actor for a notification target. Returns the actor
+        dict, or None if unknown; raises NeedsClarification if ambiguous."""
+        from galene.interpretation.actors import AmbiguousActor
+        try:
+            return self.actor_registry().resolve(name)
+        except AmbiguousActor as e:
+            opts = "; ".join(f"{c['name']} — {c.get('description') or 'no description'} (id {c['id']})"
+                             for c in e.candidates)
+            raise NeedsClarification(
+                f"Which '{name}' do you mean? {opts}")
 
     # --- prerequisite checks ---
     def _discovery_path(self, source):

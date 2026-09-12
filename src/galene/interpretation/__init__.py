@@ -11,9 +11,11 @@ from .provider import LLMProvider, StubProvider, get_provider
 from .knowledge import KnowledgeBase
 from .interpret import interpret_report, apply_correction
 from .scope import check_scope, ScopeDecision, REFUSAL
+from .actors import ActorRegistry, AmbiguousActor
 
 __all__ = [
     "LLMProvider", "StubProvider", "get_provider",
     "KnowledgeBase", "interpret_report", "apply_correction",
     "check_scope", "ScopeDecision", "REFUSAL",
+    "ActorRegistry", "AmbiguousActor",
 ]

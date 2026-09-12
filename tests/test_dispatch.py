@@ -63,6 +63,20 @@ def test_capabilities_intent_lists_fields(fake, deps, kb_ship, has_data):
     assert "EngineSpeed" in reply and "queryable" in reply.lower()
 
 
+def test_actors_intent_add_routes_to_registry(fake, deps, kb_ship, tmp_path):
+    """The 'actors' intent extracts an add-op and persists it via the registry.
+    Uses a temp actor store so artifacts/ is untouched."""
+    from galene.interpretation.actors import ActorRegistry
+    deps._actors = ActorRegistry(tmp_path / "actors.json")
+    o, _ = _session(fake, deps, kb_ship, intent="actors",
+                    params={"op": "add", "name": "Andrew",
+                            "description": "engine room technician", "contact": ""})
+    reply = o.send("add Andrew as the engine room technician")
+    assert "Andrew" in reply
+    # the add actually persisted
+    assert any(a["name"] == "Andrew" for a in deps.actor_registry().all())
+
+
 def test_single_source_relationship_not_fused(deps, has_data):
     """Bug C regression: a relationship question naming only engine signals must
     NOT be treated as cross-source just because a word like 'speed' (from

@@ -25,7 +25,7 @@ from .resolve import resolve_signal, resolve_aggregation
 INTENTS = ["capabilities", "describe_fields", "value", "trend", "plot",
            "relationship", "reasoning", "correction", "position", "nearby",
            "voyage", "efficiency", "distance", "between", "geo", "anomaly",
-           "summarize", "regimes", "smalltalk"]
+           "summarize", "regimes", "actors", "smalltalk"]
 
 
 class _NeedsClarification(Exception):
@@ -123,6 +123,11 @@ does NOT make it a relationship question.
     TO, AND (b) a consumed TOTAL ("how much ... used/consumed"). If the user asks
     to PLOT/BUCKET a signal between two points (a chart, not a single total),
     that is plot — the from/to just restrict the window, it's not a voyage total.
+- actors: managing the directory of PEOPLE/actors — adding, listing, or removing
+    a person and their role/description. e.g. "add Andrew as the engine room
+    technician", "who is the captain?", "list the crew / people / actors",
+    "remove Andrew", "delete the actor Maria". About WHO (people to notify), NOT
+    about telemetry signals, values, or relationships between signals.
 - smalltalk: greetings or meta questions about the assistant itself.
 
 If the request is genuinely ambiguous between two intents (e.g. you cannot tell
@@ -265,6 +270,19 @@ Return ONLY JSON with keys:
       distance (e.g. "fuel per operating hour" -> "operating hour"; "fuel per MWh"
       -> "MWh"; "X per revolution" -> "revolution"). Empty "" if the denominator
       is distance or there is no per-Y.
+Message: {message}"""
+
+_ACTOR_SYSTEM = """Extract an ACTOR-directory operation from the user's message as
+JSON. The directory holds PEOPLE (name + a role/description). Return ONLY JSON:
+  "op": one of "add" / "list" / "delete" (or "" if unclear),
+  "name": the person's name for add/delete (or ""),
+  "description": their role/description for add, e.g. "engine room technician"
+      or "captain" (or ""),
+  "contact": an email/handle if the user gave one (or "").
+Examples:
+  "add Andrew as the engine room technician" -> {{"op":"add","name":"Andrew","description":"engine room technician","contact":""}}
+  "who is the captain / list the crew / show actors" -> {{"op":"list","name":"","description":"","contact":""}}
+  "remove Andrew / delete the actor Maria" -> {{"op":"delete","name":"Andrew","description":"","contact":""}}
 Message: {message}"""
 
 
@@ -592,6 +610,9 @@ class Orchestrator:
                 notice = self._auto_describe_fields(src)
             return notice + d.field_descriptions(src)
 
+        if intent == "actors":
+            return self._dispatch_actors(message)
+
         if intent in ("relationship", "reasoning", "correction"):
             # correction doesn't need discovery; relationship/reasoning do -> auto-run
             notice = ""
@@ -764,3 +785,25 @@ class Orchestrator:
             return json.loads(m.group(0)) if m else {}
         except Exception:
             return {}
+
+    def _dispatch_actors(self, message: str) -> str:
+        """Actor-directory CRUD (add/list/delete people). The LLM extracts the
+        operation + fields; deterministic code performs it. Delete/resolve ask a
+        clarifying question when a name is ambiguous (via NeedsClarification)."""
+        raw = self.provider.complete(_PARAM_INSTRUCTION,
+                                     _ACTOR_SYSTEM.format(message=message))
+        try:
+            import re
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            params = json.loads(m.group(0)) if m else {}
+        except Exception:
+            params = {}
+        op = (params.get("op") or "").lower()
+        if op == "add":
+            return self.deps.add_actor(params.get("name", ""),
+                                       description=params.get("description", ""),
+                                       contact_label=params.get("contact") or None)
+        if op == "delete":
+            return self.deps.delete_actor(params.get("name", ""))
+        # default / "list" (also the safe fallback for an unclear op)
+        return self.deps.list_actors()

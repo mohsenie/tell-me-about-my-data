@@ -10,11 +10,16 @@ from collections import Counter
 
 import config
 from galene import term
-from galene.interpretation import KnowledgeBase
+from galene.interpretation import KnowledgeBase, ActorRegistry
 
 
 def kb(asset_type: str) -> KnowledgeBase:
     return KnowledgeBase(asset_type, config.ARTIFACTS_DIR / f"knowledge_{asset_type}.json")
+
+
+def actor_registry() -> ActorRegistry:
+    """The actors directory (global — people aren't vessel-scoped)."""
+    return ActorRegistry(config.ARTIFACTS_DIR / "actors.json")
 
 
 def resolve_window(source: str, vessel: str, days=None, date_from=None, date_to=None):
