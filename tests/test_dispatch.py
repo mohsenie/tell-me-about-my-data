@@ -29,10 +29,63 @@ def test_value_intent_computes_number(fake, deps, kb_ship, has_data):
     assert any(ch.isdigit() for ch in reply)   # a number came back
 
 
+def test_value_honors_stddev_aggregation(fake, deps, kb_ship, has_data):
+    """Bug A regression: 'standard deviation of X' must compute stddev, not fall
+    back to avg. stddev is now in the param aggregation enum, and compute_value
+    honors an explicit aggregation."""
+    o, _ = _session(fake, deps, kb_ship, intent="value",
+                    params={"signal": "EngineCoolantTemperature",
+                            "aggregation": "stddev"})
+    # name the exact signal so resolution is unambiguous (mirrors the LLM's
+    # extracted signal param); the point under test is the AGGREGATION.
+    reply = o.send("standard deviation of EngineCoolantTemperature")
+    assert "stddev" in reply.lower()
+    assert "avg " not in reply.lower()         # NOT silently the mean
+    assert "EngineCoolantTemperature" in reply
+
+
+def test_value_honors_date_range_and_integral_unit(fake, deps, kb_ship, has_data):
+    """Bug B regression: an explicit date range restricts the window (not all
+    data), and an integral of a rate reports the total's unit (L), never 'L/h'."""
+    o, _ = _session(fake, deps, kb_ship, intent="value",
+                    params={"signal": "EngineFuelRate", "aggregation": "integral",
+                            "date_from": "2026-09-03", "date_to": "2026-09-04"})
+    reply = o.send("integral of EngineFuelRate from 2026-09-03 to 2026-09-04")
+    # window is the requested range, not the full dataset
+    assert "2026-09-03..2026-09-04" in reply
+    # a total is not a rate -> unit stripped of the per-hour denominator
+    assert "L/h" not in reply
+
+
 def test_capabilities_intent_lists_fields(fake, deps, kb_ship, has_data):
     o, _ = _session(fake, deps, kb_ship, intent="capabilities", params={})
     reply = o.send("what can I ask about?")
     assert "EngineSpeed" in reply and "queryable" in reply.lower()
+
+
+def test_single_source_relationship_not_fused(deps, has_data):
+    """Bug C regression: a relationship question naming only engine signals must
+    NOT be treated as cross-source just because a word like 'speed' (from
+    EngineSpeed) fuzzy-matches an nmea signal. It should return the per-source
+    graph (the single dcor), not a fused cross-source table."""
+    msg = "distance correlation between EngineFuelRate and EngineSpeed"
+    # the cross-source detector should decline (fewer than 2 sources referenced)
+    assert deps._cross_source_relationship(msg, "engine") is None
+    out = deps.relationship_lookup("engine", msg)
+    assert "Cross-source" not in out
+    assert "EngineSpeed" in out
+
+
+def test_genuine_cross_source_relationship_still_fused(deps, has_data):
+    """Bug C guard: a REAL cross-source question (two sources' exact signals) still
+    routes to fused discovery — the tightening didn't over-correct."""
+    srcs = deps.all_sources()
+    if not ({"nmea", "vibration"} <= set(srcs)):
+        pytest.skip("needs nmea + vibration sources")
+    out = deps.relationship_lookup(
+        "vibration",
+        "cross-source relationship between vibration acceleration_y and nmea roll")
+    assert "Cross-source" in out
 
 
 def test_position_intent_returns_coords(fake, deps, kb_ship, has_data):

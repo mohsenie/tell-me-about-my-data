@@ -242,9 +242,12 @@ Available signals: {signals}
 Return ONLY JSON with keys:
   "signal": best-matching signal for the main quantity (or ""),
   "signal_x","signal_y": for a scatter/correlation of two signals (or ""),
-  "aggregation": one of avg/min/max/sum/median/integral (or ""),
+  "aggregation": one of avg/min/max/sum/median/stddev/count/integral (or ""),
   "bucket": time bin like "1h","4h","1d" for trends (or ""),
   "days": integer number of days back if stated (or null),
+  "date_from","date_to": explicit calendar range as ISO dates "YYYY-MM-DD" if the
+      user gave one ("over 2026-09-03 to 2026-09-04", "between Sep 3 and Sep 4",
+      "on 2026-09-04"), else "". For a single day, set both to that date.
   "plot_kind": "trend" or "scatter" if a plot (or ""),
   "from_lat","from_lon": start-point coordinates for a voyage, as numbers, if the
       user gave coordinates (else null),

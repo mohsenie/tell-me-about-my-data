@@ -300,8 +300,10 @@ class ChatDeps:
             out.append(item)
         return out
 
-    def _window(self, source, days):
-        globs, label = resolve_window(source, self.vessel, days=days)
+    def _window(self, source, days, date_from=None, date_to=None):
+        globs, label = resolve_window(source, self.vessel, days=days,
+                                      date_from=date_from or None,
+                                      date_to=date_to or None)
         return present_globs(globs), label
 
     # (module helper _percentile_local defined at end of file)
@@ -323,7 +325,9 @@ class ChatDeps:
 
     def compute_value(self, source, message, params):
         days = params.get("days")
-        present, label = self._window(source, days)
+        present, label = self._window(source, days,
+                                      date_from=params.get("date_from"),
+                                      date_to=params.get("date_to"))
         if not present:
             return f"No data for '{source}' in that window."
         # "fuel CONSUMPTION" means the fuel RATE (integrated) — resolve within the
@@ -342,6 +346,10 @@ class ChatDeps:
         # honor explicit aggregation if the user asked for one
         if params.get("aggregation"):
             agg = params["aggregation"]
+        # integrating a RATE over time strips its per-hour denominator (L/h -> L);
+        # a total is not a rate. (Other aggregations keep the signal's own unit.)
+        if agg == "integral":
+            unit = self._integrated_unit(unit)
         res = aggregate(present, signal, agg, label, unit=unit)
         return res.human()
 
@@ -2154,19 +2162,27 @@ class ChatDeps:
         Fused signals are namespaced 'source__signal'; we detect two distinct
         source prefixes among the terms the user named."""
         low = (message or "").lower()
-        # which sources are referenced (by source name OR by owning a named signal)
+        # which sources are referenced. Be STRICT: only an explicit source NAME or
+        # an EXACT full signal-name mention counts — NOT a fuzzy/substring match on
+        # a plain English word. (Otherwise "EngineSpeed" tokenizes to "speed",
+        # which fuzzy-matches nmea's water_speed_knots/sog and spuriously drags in
+        # a second source, forcing a cross-source answer to a single-source Q.)
         refs = set()
         for s in self.all_sources():
             variants = {s.lower(), s.lower().replace("-", " "), s.lower().replace("-", "")}
             if any(v and v in low for v in variants):
                 refs.add(s)
-        # also map named signal words to their source
-        for w in re.findall(r"[a-z_]+", low):
-            if len(w) <= 2:
-                continue
-            for s in self.all_sources():
-                if self._source_has_signal(s, w):
+        # exact full signal-name mentions (whole column name present in the text),
+        # matched case-insensitively and tolerant of _/space differences.
+        def _canon(t):
+            return t.lower().replace("_", "").replace(" ", "")
+        canon_msg = _canon(low)
+        for s in self.all_sources():
+            for col in self.signals(s):
+                cl = col.lower()
+                if cl in low or _canon(col) in canon_msg:
                     refs.add(s)
+                    break
         if len(refs) < 2:
             return None   # not a cross-source question -> normal per-source path
 
