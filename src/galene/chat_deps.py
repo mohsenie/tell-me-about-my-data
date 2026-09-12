@@ -95,6 +95,7 @@ class ChatDeps:
         self.kb = kb
         self.vessel = vessel
         self._actors = None   # lazily loaded ActorRegistry (see actor_registry)
+        self._watches = None  # lazily loaded WatchRegistry (see watch_registry)
 
     def actor_registry(self):
         """The actors directory (global). Lazily loaded so tests/paths stay cheap."""
@@ -154,6 +155,92 @@ class ChatDeps:
                              for c in e.candidates)
             raise NeedsClarification(
                 f"Which '{name}' do you mean? {opts}")
+
+    # --- watches CRUD (create/list/delete; notify resolved via actors at create) ---
+    def watch_registry(self):
+        if getattr(self, "_watches", None) is None:
+            from galene.cli_helpers import watch_registry
+            self._watches = watch_registry()
+        return self._watches
+
+    def create_watch(self, source, condition_type, params, notify=None,
+                     interval_s=3600, description=""):
+        """Create a watch. If `notify` names a person, resolve it via the actors
+        layer NOW (so an ambiguous 'Andrew' is clarified up front and the actor id
+        is stored) — raises NeedsClarification if ambiguous."""
+        from galene.anomaly import CONDITION_TYPES
+        if condition_type not in CONDITION_TYPES:
+            return (f"I can watch for: {', '.join(CONDITION_TYPES)}. "
+                    f"'{condition_type}' isn't one I recognize.")
+        notify_actor_id = None
+        if notify:
+            actor = self.resolve_actor(notify)   # raises NeedsClarification if ambiguous
+            if actor:
+                notify_actor_id = actor["id"]
+            # unknown name: keep the label, note it isn't a known actor yet
+        w = self.watch_registry().add(
+            source, condition_type, params, notify=notify,
+            notify_actor_id=notify_actor_id, interval_s=interval_s,
+            description=description)
+        who = ""
+        if notify:
+            who = (f", notifying {notify}" if notify_actor_id
+                   else f", notifying '{notify}' (not a known actor yet — add them "
+                        "so alerts can reach them)")
+        return (f"Watch set on '{source}': {self._describe_condition(w)}{who}. "
+                f"(id {w['id']}) I'll check it when watches run.")
+
+    @staticmethod
+    def _describe_condition(w):
+        p = w.get("params", {})
+        if w["condition_type"] == "threshold":
+            u = f" {p.get('unit')}" if p.get("unit") else ""
+            return (f"{p.get('aggregation','avg')} {p.get('signal')} "
+                    f"{p.get('op','>')} {p.get('value')}{u}")
+        if w["condition_type"] == "anomaly":
+            return "relationship-structure drift vs baseline"
+        if w["condition_type"] == "regime":
+            return "operating-mode / regime change vs baseline"
+        return w["condition_type"]
+
+    def list_watches(self, source=None):
+        reg = self.watch_registry()
+        watches = reg.for_source(source) if source else reg.all()
+        if not watches:
+            return ("No watches set up yet. e.g. 'watch fuel rate and tell me if the "
+                    "average goes above 10, notify Andrew'.")
+        lines = ["Watches:" if not source else f"Watches on '{source}':"]
+        for w in watches:
+            note = "" if w.get("enabled", True) else " [disabled]"
+            who = f" -> {w['notify']}" if w.get("notify") else ""
+            lines.append(f"  - [{w['source']}] {self._describe_condition(w)}{who}"
+                         f"{note} (id {w['id']})")
+        return "\n".join(lines)
+
+    def delete_watch(self, description_or_id, source=None):
+        """Delete a watch by id, or by matching a description against the source's
+        watches. Asks which one if the description is ambiguous."""
+        reg = self.watch_registry()
+        term = (description_or_id or "").strip().lower()
+        if reg.get(term):                      # exact id
+            reg.delete(term)
+            return f"Deleted watch (id {term})."
+        pool = reg.for_source(source) if source else reg.all()
+        # match on the source name or a word in the condition description
+        matches = [w for w in pool
+                   if term in w["source"].lower()
+                   or term in self._describe_condition(w).lower()
+                   or term in (w.get("description") or "").lower()]
+        if not matches:
+            return f"I don't see a watch matching '{description_or_id}'. Try 'list watches'."
+        if len(matches) > 1:
+            opts = "; ".join(f"{self._describe_condition(w)} on {w['source']} (id {w['id']})"
+                             for w in matches)
+            raise NeedsClarification(
+                f"Which watch should I delete? {opts} — give the id.")
+        w = matches[0]
+        reg.delete(w["id"])
+        return f"Deleted the {self._describe_condition(w)} watch on '{w['source']}' (id {w['id']})."
 
     # --- prerequisite checks ---
     def _discovery_path(self, source):

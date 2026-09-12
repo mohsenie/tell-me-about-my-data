@@ -19,6 +19,7 @@ Invariants honored:
 from .baseline import build_baseline, save_baseline, load_baseline, has_baseline
 from .detector import detect_drift
 from .behavioral import detect_stops, dwell_norm, flag_current_dwell
+from .watches import WatchRegistry, CONDITION_TYPES
 from .transitions import (
     build_transition_matrix, detect_transition_anomalies, runs_from_labels)
 from .timescale import (
@@ -36,4 +37,5 @@ __all__ = [
     "multiscale_drift", "fingerprint_distance", "group_dates", "period_key",
     "build_joint_envelopes", "detect_joint", "fit_envelope", "mahalanobis",
     "ae_available", "train_ae", "ae_errors", "build_ae_backends", "detect_ae",
+    "WatchRegistry", "CONDITION_TYPES",
 ]

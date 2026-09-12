@@ -414,6 +414,44 @@ def cmd_plot(args) -> None:
         print(term.info(f"  saved: {out.relative_to(config.ROOT)}"))
 
 
+def cmd_watch(args) -> None:
+    """Manage / run background watches. `list` shows configured watches; `run`
+    evaluates all DUE watches and fires alerts on a state CHANGE (de-dup). `run`
+    is what a cron line / scheduled trigger calls — stateless and idempotent."""
+    from galene.cli_helpers import watch_registry
+    reg = watch_registry()
+    if args.action == "list":
+        watches = reg.for_source(args.source) if args.source else reg.all()
+        if not watches:
+            print(term.info("No watches configured."))
+            return
+        print(term.heading("Watches") + "\n")
+        for w in watches:
+            state = w.get("last_state") or "(not yet evaluated)"
+            who = f" -> {w['notify']}" if w.get("notify") else ""
+            print(f"  [{w['source']}] {w['condition_type']}{who}  "
+                  f"(id {w['id']}, last_state={state})")
+        return
+    # run
+    from galene.anomaly.watch_eval import run_watches
+    kb = _kb(_asset_type(args))
+    summary = run_watches(args.vessel, reg, kb=kb)
+    print(term.heading(f"watch run — evaluated {summary['evaluated']} due watch(es)")
+          + "\n")
+    if summary["fired"]:
+        for a in summary["fired"]:
+            print(term.assistant(f"ALERT [{a['source']}] {a['detail']}"))
+            if a.get("notify"):
+                print(term.info(f"  -> notify {a['notify']}"))
+        print(term.info(f"\n  {len(summary['fired'])} alert(s) written to "
+                        f"{(config.ARTIFACTS_DIR / 'alerts.log').relative_to(config.ROOT)}"))
+    else:
+        print(term.info("No state changes — nothing to alert."))
+    if summary["errors"]:
+        for e in summary["errors"]:
+            print(term.warn(f"  watch {e['watch_id']}: {e['error']}"))
+
+
 def cmd_chat(args) -> None:
     """Single conversational surface. Orchestrates all phases, checks
     prerequisites, and runs missing ones on confirmation. Plain-language:
@@ -645,6 +683,14 @@ def main(argv: list[str] | None = None) -> None:
                     help="reusable asset truth behind the correction (generalizes)")
     co.add_argument("--asset-type", default=None, help="asset type (else from sources.yaml)")
     co.set_defaults(fn=cmd_correct)
+
+    wa = sub.add_parser("watch", help="manage/run background watches (alerts on a condition)")
+    wa.add_argument("action", choices=["list", "run"], default="list", nargs="?",
+                    help="list configured watches, or run (evaluate all due watches)")
+    wa.add_argument("source", nargs="?", default=None, help="filter list by source")
+    wa.add_argument("--vessel", default=config.DEFAULT_VESSEL)
+    wa.add_argument("--asset-type", default=None, help="asset type (else from sources.yaml)")
+    wa.set_defaults(fn=cmd_watch)
 
     args = parser.parse_args(argv)
     args.fn(args)

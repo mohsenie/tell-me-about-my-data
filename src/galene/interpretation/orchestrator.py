@@ -25,7 +25,7 @@ from .resolve import resolve_signal, resolve_aggregation
 INTENTS = ["capabilities", "describe_fields", "value", "trend", "plot",
            "relationship", "reasoning", "correction", "position", "nearby",
            "voyage", "efficiency", "distance", "between", "geo", "anomaly",
-           "summarize", "regimes", "actors", "smalltalk"]
+           "summarize", "regimes", "actors", "watches", "smalltalk"]
 
 
 class _NeedsClarification(Exception):
@@ -128,6 +128,13 @@ does NOT make it a relationship question.
     technician", "who is the captain?", "list the crew / people / actors",
     "remove Andrew", "delete the actor Maria". About WHO (people to notify), NOT
     about telemetry signals, values, or relationships between signals.
+- watches: setting up, listing, or removing a background WATCH/ALERT that fires
+    later when a condition holds — "let me know / notify / alert / tell me WHEN".
+    e.g. "watch the engine and tell me if it drifts, notify Andrew", "alert me
+    when average fuel rate goes above 10", "set up a watch on ...", "list my
+    watches", "delete the watch on engine temperature". The tell is a FUTURE
+    standing trigger ("when/if X happens, tell me") or managing existing watches —
+    NOT a one-off question asked right now (that's value/anomaly/etc.).
 - smalltalk: greetings or meta questions about the assistant itself.
 
 If the request is genuinely ambiguous between two intents (e.g. you cannot tell
@@ -283,6 +290,27 @@ Examples:
   "add Andrew as the engine room technician" -> {{"op":"add","name":"Andrew","description":"engine room technician","contact":""}}
   "who is the captain / list the crew / show actors" -> {{"op":"list","name":"","description":"","contact":""}}
   "remove Andrew / delete the actor Maria" -> {{"op":"delete","name":"Andrew","description":"","contact":""}}
+Message: {message}"""
+
+_WATCH_SYSTEM = """Extract a WATCH (background alert) operation from the message as
+JSON. A watch fires later WHEN a condition holds. Available signals: {signals}
+Return ONLY JSON:
+  "op": "create" / "list" / "delete" (or "" if unclear),
+  "condition_type": "threshold" (a value crossing a bound) / "anomaly" (sensor-
+      relationship drift) / "regime" (operating-mode change) — for create,
+  "signal": the signal for a threshold (or ""),
+  "aggregation": avg/min/max/median/sum for a threshold (default avg, or ""),
+  "op_cmp": the comparison for a threshold: ">" ">=" "<" "<=" (or ""),
+  "value": the numeric bound for a threshold (or null),
+  "unit": unit if the user gave one (or ""),
+  "notify": the person to notify if named (e.g. "Andrew"), else "",
+  "target": for delete/list scoping — a source name or short description (or "").
+Examples:
+  "alert me when average fuel rate goes above 10, notify Andrew" -> {{"op":"create","condition_type":"threshold","signal":"EngineFuelRate","aggregation":"avg","op_cmp":">","value":10,"unit":"","notify":"Andrew","target":""}}
+  "watch the engine for drift and tell Andrew" -> {{"op":"create","condition_type":"anomaly","signal":"","aggregation":"","op_cmp":"","value":null,"unit":"","notify":"Andrew","target":"engine"}}
+  "let me know if the engine's operating pattern changes" -> {{"op":"create","condition_type":"regime","signal":"","aggregation":"","op_cmp":"","value":null,"unit":"","notify":"","target":"engine"}}
+  "list my watches" -> {{"op":"list","condition_type":"","signal":"","aggregation":"","op_cmp":"","value":null,"unit":"","notify":"","target":""}}
+  "delete the watch on engine temperature" -> {{"op":"delete","condition_type":"","signal":"","aggregation":"","op_cmp":"","value":null,"unit":"","notify":"","target":"engine temperature"}}
 Message: {message}"""
 
 
@@ -613,6 +641,9 @@ class Orchestrator:
         if intent == "actors":
             return self._dispatch_actors(message)
 
+        if intent == "watches":
+            return self._dispatch_watches(message)
+
         if intent in ("relationship", "reasoning", "correction"):
             # correction doesn't need discovery; relationship/reasoning do -> auto-run
             notice = ""
@@ -807,3 +838,58 @@ class Orchestrator:
             return self.deps.delete_actor(params.get("name", ""))
         # default / "list" (also the safe fallback for an unclear op)
         return self.deps.list_actors()
+
+    def _dispatch_watches(self, message: str) -> str:
+        """Watch CRUD (create/list/delete). LLM extracts the operation + condition;
+        deterministic code performs it. Create resolves the notify target via the
+        actors layer (NeedsClarification if the person is ambiguous)."""
+        available = []
+        try:
+            for s in self.deps.all_sources():
+                for sig in self.deps.signals(s):
+                    if sig not in available:
+                        available.append(sig)
+        except Exception:
+            available = self.deps.signals(self.source)
+        raw = self.provider.complete(
+            _PARAM_INSTRUCTION,
+            _WATCH_SYSTEM.format(signals=", ".join(available), message=message))
+        try:
+            import re
+            m = re.search(r"\{.*\}", raw, re.DOTALL)
+            params = json.loads(m.group(0)) if m else {}
+        except Exception:
+            params = {}
+        op = (params.get("op") or "").lower()
+
+        if op == "delete":
+            return self.deps.delete_watch(params.get("target", ""))
+        if op == "create":
+            ct = (params.get("condition_type") or "").lower()
+            # route to the source that owns the named signal, else the target
+            # source name, else the home source.
+            target = params.get("target") or ""
+            src = next((s for s in self.deps.all_sources() if s.lower() in target.lower()),
+                       None)
+            if not src and params.get("signal"):
+                src = self.deps.route_source("value", message,
+                                             {"signal": params["signal"]}, self.source)
+            src = src or self._active or self.source
+            if ct == "threshold":
+                if params.get("signal") is None or params.get("value") is None:
+                    return ("For a threshold watch I need a signal and a bound, e.g. "
+                            "'alert me when average EngineFuelRate goes above 10'.")
+                wparams = {"signal": params["signal"],
+                           "aggregation": params.get("aggregation") or "avg",
+                           "op": params.get("op_cmp") or ">",
+                           "value": params.get("value"),
+                           "unit": params.get("unit") or ""}
+            elif ct in ("anomaly", "regime"):
+                wparams = {}
+            else:
+                return ("I can watch for a THRESHOLD (a value crossing a bound), an "
+                        "ANOMALY (sensor drift), or a REGIME change. Which did you mean?")
+            return self.deps.create_watch(src, ct, wparams,
+                                          notify=params.get("notify") or None)
+        # default / "list"
+        return self.deps.list_watches(params.get("target") or None)

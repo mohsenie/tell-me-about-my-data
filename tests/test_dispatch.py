@@ -63,6 +63,27 @@ def test_capabilities_intent_lists_fields(fake, deps, kb_ship, has_data):
     assert "EngineSpeed" in reply and "queryable" in reply.lower()
 
 
+def test_watches_intent_create_routes_to_registry(fake, deps, kb_ship, tmp_path, has_data):
+    """The 'watches' intent extracts a create-op and persists a watch, resolving
+    the notify target via the actors layer. Temp stores so artifacts/ is untouched."""
+    from galene.anomaly.watches import WatchRegistry
+    from galene.interpretation.actors import ActorRegistry
+    deps._watches = WatchRegistry(tmp_path / "watches.json")
+    deps._actors = ActorRegistry(tmp_path / "actors.json")
+    deps.add_actor("Andrew", "engine room technician")
+    o, _ = _session(fake, deps, kb_ship, intent="watches",
+                    params={"op": "create", "condition_type": "threshold",
+                            "signal": "EngineFuelRate", "aggregation": "avg",
+                            "op_cmp": ">", "value": 5, "unit": "L/h",
+                            "notify": "Andrew", "target": "engine"})
+    reply = o.send("alert me when average EngineFuelRate goes above 5, notify Andrew")
+    assert "engine" in reply.lower() and "andrew" in reply.lower()
+    watches = deps.watch_registry().all()
+    assert len(watches) == 1
+    assert watches[0]["condition_type"] == "threshold"
+    assert watches[0]["notify_actor_id"] is not None    # resolved at creation
+
+
 def test_actors_intent_add_routes_to_registry(fake, deps, kb_ship, tmp_path):
     """The 'actors' intent extracts an add-op and persists it via the registry.
     Uses a temp actor store so artifacts/ is untouched."""

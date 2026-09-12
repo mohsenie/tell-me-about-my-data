@@ -22,6 +22,12 @@ def actor_registry() -> ActorRegistry:
     return ActorRegistry(config.ARTIFACTS_DIR / "actors.json")
 
 
+def watch_registry():
+    """The watch registry (persisted watch definitions + scheduling state)."""
+    from galene.anomaly import WatchRegistry
+    return WatchRegistry(config.ARTIFACTS_DIR / "watches.json")
+
+
 def resolve_window(source: str, vessel: str, days=None, date_from=None, date_to=None):
     """Resolve date partitions from days / from / to. Returns (globs, label).
 

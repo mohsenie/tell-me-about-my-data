@@ -38,6 +38,7 @@ _IN_DOMAIN = {
     "measure", "metric", "metrics", "analyze", "analyse", "describe", "capable",
     "capabilities", "what can", "why", "when", "how much", "how many",
     "add", "remove", "delete", "create", "set up", "setup", "watch", "watches",
+    "alert", "alerts", "watching", "monitor", "monitoring",
     # actors directory: people/roles to notify (managing WHO)
     "actor", "actors", "crew", "person", "people", "staff", "team", "notify",
     "technician", "captain", "engineer", "operator", "mechanic", "who is",
@@ -45,9 +46,11 @@ _IN_DOMAIN = {
     "yesterday", "today", "days", "day", "hour", "hours", "week", "month",
     "window", "past", "last", "over",
 }
-# Obvious off-domain markers.
+# Obvious off-domain markers. NOTE: do NOT put bare "watch" here — it's a
+# first-class in-domain concept now (background watches/alerts); the entertainment
+# sense is caught by "film"/"movie" instead ("what film should I watch" -> film).
 _OFF_DOMAIN = {
-    "film", "movie", "watch", "recipe", "cook", "weather forecast", "joke",
+    "film", "movie", "recipe", "cook", "weather forecast", "joke",
     "poem", "stock", "crypto", "dating", "song", "sport", "score", "president",
     "capital of", "translate", "write code", "python script",
 }
