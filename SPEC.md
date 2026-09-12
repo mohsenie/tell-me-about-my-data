@@ -593,3 +593,33 @@ pip install -e .
 galene discover engine       # regimes + per-regime relationship graphs
 galene discover vibration    # -> artifacts/discovery_<source>.json
 ```
+
+---
+
+## 10. Roadmap direction (planned, NOT yet built)
+
+The method + chat are built and proven (sections 2–6). The next arcs — designed,
+recorded in TODO.md, not yet implemented:
+
+- **Actors layer (partly built).** A user-editable directory of WHO (people; roles
+  + org relationships later) so alerts can name a person, resolving with a
+  clarifying question when ambiguous. People CRUD + resolve is DONE; roles + auth
+  are later iterations (no auth enforced today — deliberate).
+- **Watches (watch-and-react).** Named, persisted watches (threshold / drift-
+  anomaly / regime-change) evaluated on a schedule; notify the resolved actor.
+  Reuses the existing detectors. Two OPEN product decisions gate the anomaly kind:
+  baseline freshness (set-once vs refreshed) and alert de-duplication (notify on
+  CHANGE, not every hit — the anti-cry-wolf mechanism, invariant #6).
+- **AWS deployment (serverless, near-zero idle).** DuckDB throughout; light/
+  interactive on Lambda, heavy background on Fargate run-and-exit (right-sized per
+  job); state in DynamoDB, data in S3; one EventBridge tick + a dispatcher reading
+  watches by `next_run` (no per-watch schedules). Heavy INTERACTIVE queries are
+  allowed but warn-before-proceed with a cost/time estimate, or offer an async
+  "email me the result" fire-once job. Cost transparency: measured cost after a
+  query + an estimated $/month before scheduling a watch. First build step is a
+  storage abstraction (local-dev + S3/DynamoDB backends). Full design, rationale,
+  rejected alternatives, and phased order in **`docs/adr/0001-aws-deployment.md`**.
+
+Explicitly OUT of scope: predicting future values (needs conditions the data
+lacks); local/desktop execution as a customer model (local DEV stays); real-time
+streaming ingestion (the design is batch/scheduled).

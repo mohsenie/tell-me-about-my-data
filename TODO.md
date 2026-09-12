@@ -487,6 +487,85 @@ you cron or a Kiro hook), NOT real-time streaming.
 - [ ] **Action, split from trigger:** default = write a structured alert to a
       file/log + exit code (scriptable, no assumptions). DELIVERY (webhook/email to
       the resolved actor) is a separate OPT-IN network action, later.
+- [ ] **OPEN DECISION — baseline freshness (product call, blocks anomaly watches).**
+      Drift compares against an operator-designated known-good baseline. Set once
+      and reused, or refreshed periodically? A stale baseline over/under-alarms as
+      the asset slowly changes over months. Decide before shipping anomaly watches.
+- [ ] **OPEN DECISION — alert de-duplication (product call, most important for
+      usability).** A background anomaly watch run hourly re-finds the SAME ongoing
+      drift every hour. A `last_state` field must gate so it notifies on CHANGE (new
+      / cleared), not on every positive evaluation. Invariant #6 (rank, don't
+      cry-wolf) applies double — this is what makes background alerting usable.
+
+---
+
+## P1 — AWS deployment (serverless, near-zero idle cost)
+
+Target: fully cloud, multi-tenant, with idle cost ≈ S3 storage + the scheduled
+ticks users opted into (no always-on servers/DBs). DuckDB throughout (interactive
++ background) for one engine + local-dev/prod parity. Users do NOT trigger heavy
+analysis interactively (it's background/scheduled); interactive use is light.
+FULL DESIGN + rationale + alternatives + phased build order in
+`docs/adr/0001-aws-deployment.md`. Highlights:
+
+- [ ] **Storage abstraction (FIRST build step — everything depends on it).**
+      config.py file paths + the loaders' glob.glob() partition enumeration + the
+      JSON stores become a store INTERFACE with local-FS and S3/DynamoDB backends.
+      The real work is S3 partition LISTING (ListObjects), not the read (DuckDB
+      httpfs reads s3:// natively). Mostly mechanical — I/O is already isolated.
+- [ ] **Data on S3** (DuckDB httpfs + S3 partition listing) — validates DuckDB<->S3.
+- [ ] **Interactive plane:** API Gateway -> light Lambda (container image; heavy dep
+      tree); session state (history/mode/last-intent/clarification) in DynamoDB.
+- [ ] **Scheduler plane:** one EventBridge Scheduler tick -> dispatcher Lambda that
+      queries watches WHERE next_run <= now and enqueues to SQS. "Database is the
+      schedule" (next_run column), NOT per-user files or per-watch EventBridge rules
+      (quota + hand-rolled-scheduler anti-patterns).
+- [ ] **Worker plane (routing by `runtime` tag set at watch-create):** light ->
+      Lambda (DuckDB, bounded-window aggregate); heavy -> Fargate task run-and-exit
+      (DuckDB + numpy/sklearn/dcor), RIGHT-SIZED per job (task CPU/mem from the scan
+      estimate). Static map: threshold->light, anomaly/regime->heavy. Size guard
+      promotes a light watch to heavy if estimated scan bytes exceed a threshold.
+- [ ] **State in DynamoDB on-demand** (zero idle): watches, actors, knowledge,
+      session. Telemetry + discovery artifacts + baselines -> S3, tenant-namespaced.
+- [ ] **Multi-tenancy / tenant isolation** (data partitioning + IAM scoping) — ties
+      to the deferred auth iteration.
+- REJECTED (see ADR): local/desktop execution as a customer model (local DEV
+      workflow stays); Athena for the light lane (can't run the heavy analytics);
+      ECS service / task-per-session (idle cost); RDS/Aurora (hourly idle);
+      per-watch schedule files / EventBridge rules; always-on reserved warm task
+      (breaks near-zero-idle); real-time streaming ingestion (design is batch).
+
+---
+
+## P1 — Heavy interactive queries (allow, but warn / offer async)
+
+Users CAN ask a heavy question in chat; handle it gracefully without an always-on
+runtime (see ADR). Reuses the heavy-worker (Fargate) lane.
+
+- [ ] **Warn-before-proceed:** estimate scan size up front (S3 object sizes /
+      partition count) -> "to answer this I need to scan ~N GB — ~30s to set up plus
+      compute, roughly $X. Proceed?" Only for queries over a size/time threshold.
+- [ ] **Async 'email me the result':** the alternative option — schedule a
+      FIRE-ONCE job on the heavy-worker lane (a watch with no recurrence), it runs,
+      emails the result (SES), and the task EXITS. Chat returns immediately ("I'll
+      email you when it's ready"). No blocking, no idle cost, no new infrastructure.
+
+---
+
+## P1 — Cost transparency to the user
+
+Show users what they spend — extends the existing UsageMeter. Honest: measured
+where possible, clearly labelled ESTIMATE for projections; prices from
+configurable constants (never an unverified rate hardcoded as fact).
+
+- [ ] **Post-run actual cost of a chat query** ("this query cost ≈ $0.0001"):
+      sum Bedrock tokens (already metered) + Lambda GB-seconds (reported) + S3 GETs
+      / bytes scanned (DuckDB can report). Accurate-ish, labelled "≈".
+- [ ] **Pre-schedule monthly projection for a watch** ("this will cost ≈ $X/month"):
+      frequency (known from interval) x per-run cost (calibrate by a DRY RUN, don't
+      guess) at current data volume; state it's an estimate that rises as data
+      accumulates. Lets users pick a cheaper interval / lighter condition before
+      committing. Threshold-on-Lambda = pennies; hourly-anomaly-on-Fargate = dollars.
 
 ---
 
