@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 
 import config
-from galene.discovery.dependence import classify, Kind, pearson_abs
+from galene.discovery.dependence import (
+    classify, Kind, pearson_abs, distance_correlation)
 from galene.discovery.loader import load_numeric
 from galene.discovery.relationships import (
     build_per_regime_graphs, graphs_for_fixed_regimes, clean_frame)
@@ -23,6 +24,26 @@ def test_classify_thresholds():
     assert classify(0.1, 0.8) == Kind.NONLINEAR    # dcor >> pearson
     # weak/mixed defaults to linear (documented behavior)
     assert classify(0.3, 0.3) == Kind.LINEAR
+
+
+def test_distance_correlation_bounds_and_degenerate_input():
+    """dCor is mathematically in [0, 1]. Regression for a fast-path (AVL) blow-up:
+    on a (near-)constant input the fast kernel returned a garbage value (~32) that
+    leaked into drift reports as a fake 'coupling strengthened 0.4 -> 32'. A
+    constant series is independent of everything -> dCor must be 0, and any value
+    must stay within [0, 1]."""
+    rng = np.random.default_rng(0)
+    x = rng.normal(size=2000)
+    const = np.full(2000, 3.14)                    # zero-variance column
+    near_const = np.full(2000, 1.0)
+    near_const[0] = 1.0 + 1e-13                     # effectively constant
+    assert distance_correlation(x, const) == 0.0    # constant -> independent
+    assert distance_correlation(x, near_const) == 0.0
+    assert distance_correlation(const, const) == 0.0
+    # a real pair stays a valid, sensible dCor in [0, 1] (tiny FP slack allowed)
+    d = distance_correlation(x, 2.0 * x)
+    assert 0.0 <= d <= 1.0001 and d > 0.9           # perfect linear -> ~1
+    assert 0.0 <= distance_correlation(x, rng.normal(size=2000)) <= 1.0001
 
 
 def test_pearson_abs_bounds():

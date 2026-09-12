@@ -95,9 +95,18 @@ try:
         x = np.asarray(x, float); y = np.asarray(y, float)
         if len(x) < 3:
             return 0.0
+        # A (near-)constant series is independent of everything -> dCor = 0. Guard
+        # this explicitly: the fast AVL kernel divides by a variance-like term and
+        # returns a large GARBAGE value (>>1) instead of 0 when one input has ~zero
+        # variance (finite, so an isfinite check alone won't catch it).
+        if np.std(x) <= 1e-12 or np.std(y) <= 1e-12:
+            return 0.0
         # AVL method = fast O(n log n) for the univariate case.
         val = _dcor_lib.distance_correlation(x, y, method="avl")
-        return float(val) if np.isfinite(val) else 0.0
+        val = float(val) if np.isfinite(val) else 0.0
+        # dCor is mathematically in [0, 1]; anything outside is a numerical
+        # artifact (e.g. AVL on a degenerate input) -> treat as no dependence.
+        return val if 0.0 <= val <= 1.0000001 else 0.0
 
     _DCOR_BACKEND = "dcor.avl (fast O(n log n))"
 except ImportError:  # pragma: no cover - fallback path

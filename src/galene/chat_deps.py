@@ -1168,14 +1168,11 @@ class ChatDeps:
         return out
 
     def _integrated_unit(self, rate_unit):
-        """Unit of the time-INTEGRAL of a rate: strip a per-hour denominator.
-        'L/h' -> 'L', 'kg/hr' -> 'kg', 'L/hour' -> 'L'. If it's not a per-hour
-        rate, return it unchanged (best-effort; unit is informational)."""
-        u = (rate_unit or "").strip()
-        for suffix in ("/h", "/hr", "/hour", " per hour", "/hr.", "/ h"):
-            if u.lower().endswith(suffix):
-                return u[: len(u) - len(suffix)].strip()
-        return u
+        """Unit of the time-INTEGRAL of a rate: strip a per-hour denominator
+        ('L/h' -> 'L'). Thin wrapper over query.integrated_unit — the shared
+        helper the standalone `query fuel_consumption` path uses too."""
+        from galene.query import integrated_unit
+        return integrated_unit(rate_unit)
 
     def _resolve_rate(self, term, source, rates, message):
         """Pick the rate signal for a consumption question. Resolve `term` within
@@ -2050,14 +2047,22 @@ class ChatDeps:
                     }
         return facts
 
-    def summarize(self, source, message):
+    def summarize(self, source, message, include_behavioral=True):
         """'What's notable / summarize' — synthesize the structured facts into a
         SHORT prioritized overview. Grounded: the LLM only reorganizes computed
         facts, never invents; always keeps the observed-not-cause caveat. No
-        baseline required (folds drift in only if one exists)."""
+        baseline required (folds drift in only if one exists).
+
+        include_behavioral: when False, omit the behavioral-norm block from the
+        deterministic template — used by summarize_all, which leads with the
+        vessel-level behavioral flag ONCE so it isn't repeated per source."""
         facts = self._notable_facts(source)
-        # deterministic fallback (stub provider or LLM failure)
-        det = self._summary_fallback(facts)
+        # deterministic fallback (offline stub provider or LLM failure)
+        det = self._summary_fallback(facts, include_behavioral=include_behavioral)
+        # a non-synthesizing provider (the offline stub) returns a fixed
+        # placeholder, not a real summary — use the grounded template instead.
+        if not getattr(self.provider, "synthesizes", True):
+            return det
         try:
             import json as _json
             out = self.provider.complete(_SUMMARY_SYSTEM,
@@ -2082,15 +2087,21 @@ class ChatDeps:
             parts.append("BEHAVIOR (vs the asset's own history):\n"
                          + "\n".join("  - " + f for f in beh))
         for src in sources:
-            parts.append(f"[{src}]\n" + self.summarize(src, message))
+            # behavioral flag already led once above -> don't repeat per source
+            parts.append(f"[{src}]\n"
+                         + self.summarize(src, message, include_behavioral=False))
         return "\n\n".join(parts)
 
-    def _summary_fallback(self, facts):
-        """Deterministic template summary (no LLM) — also the offline path."""
+    def _summary_fallback(self, facts, include_behavioral=True):
+        """Deterministic template summary (no LLM) — also the offline path.
+
+        include_behavioral=False omits the behavioral-norm lines (the caller,
+        summarize_all, already stated them once at the vessel level)."""
         s = facts["source"]
         L = [f"Notable in '{s}':"]
-        for f in facts.get("behavioral_flags", []):   # lead with behavior changes
-            L.append(f"- {f}")
+        if include_behavioral:
+            for f in facts.get("behavioral_flags", []):   # lead with behavior changes
+                L.append(f"- {f}")
         reg = facts.get("regimes", {})
         if reg.get("k"):
             dist = ", ".join(f"regime {d['label']} {d['pct']}%"

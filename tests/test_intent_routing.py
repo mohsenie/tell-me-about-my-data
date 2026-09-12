@@ -24,6 +24,12 @@ CASES = [
     ("what can I ask about?", "capabilities"),
     ("what fields are there?", "capabilities"),
     ("help", "capabilities"),
+    # first-contact ORIENTATION ("tell me about the ship" / "what do you know")
+    # is capabilities, NOT summarize — no notability framing (misroute we fixed).
+    ("what can you tell me about this ship?", "capabilities"),
+    ("tell me about this ship", "capabilities"),
+    ("what do you know about it?", "capabilities"),
+    ("what data do you have?", "capabilities"),
     # describe fields
     ("what do the fields mean?", "describe_fields"),
     # value (single number, plain window)

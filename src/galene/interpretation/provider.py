@@ -23,12 +23,26 @@ class LLMProvider(ABC):
         """
         ...
 
+    @property
+    def synthesizes(self) -> bool:
+        """Whether this provider does REAL free-form synthesis/reasoning.
+
+        A real LLM returns True. The offline StubProvider returns False: it
+        emits a fixed placeholder, so callers that HAVE a deterministic fallback
+        (summarize, reason) should prefer that fallback rather than surface the
+        placeholder. (A truthiness check on the reply can't tell them apart —
+        the stub's placeholder is non-empty text.)
+        """
+        return True
+
 
 class StubProvider(LLMProvider):
     """Deterministic, offline stand-in. Produces a plainly-labeled, generic
     hypothesis so the pipeline works end-to-end with no API. NOT real reasoning —
     replace with a real provider for genuine root-cause suggestions.
     """
+
+    synthesizes = False   # offline placeholder, not real synthesis (see base)
 
     def complete(self, system: str, user: str, max_tokens: int | None = None) -> str:
         # No real reasoning offline. Echo a clearly-labeled placeholder so the
@@ -94,6 +108,11 @@ class UsageMeter(LLMProvider):
         self.input_tokens = 0
         self.output_tokens = 0
         self.last_usage = None
+
+    @property
+    def synthesizes(self) -> bool:
+        # delegate to the wrapped provider so metering doesn't mask a stub
+        return getattr(self.inner, "synthesizes", True)
 
     def complete(self, system: str, user: str, max_tokens: int | None = None) -> str:
         self.calls += 1

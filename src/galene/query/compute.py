@@ -37,6 +37,21 @@ def _src(globs: list[str]) -> str:
     return f"read_parquet([{arr}], union_by_name=true)"
 
 
+def integrated_unit(rate_unit: str) -> str:
+    """Unit of the time-INTEGRAL of a rate: strip a per-hour denominator.
+
+    'L/h' -> 'L', 'kg/hr' -> 'kg', 'L/hour' -> 'L'. If it's not a per-hour rate,
+    return it unchanged (best-effort; the unit is informational). Shared by the
+    chat 'voyage/consumption' path and the standalone `query fuel_consumption`
+    so both report a total's unit identically (never 'L/h' on an integral).
+    """
+    u = (rate_unit or "").strip()
+    for suffix in ("/h", "/hr", "/hour", " per hour", "/hr.", "/ h"):
+        if u.lower().endswith(suffix):
+            return u[: len(u) - len(suffix)].strip()
+    return u
+
+
 def available_metrics(globs: list[str]) -> list[str]:
     con = duckdb.connect()
     schema = con.execute(f"DESCRIBE SELECT * FROM {_src(globs)}").fetchall()

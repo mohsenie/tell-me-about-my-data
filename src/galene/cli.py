@@ -29,7 +29,8 @@ from galene.interpretation import (  # noqa: E402
     get_provider, KnowledgeBase, interpret_report, apply_correction,
     check_scope, REFUSAL)
 from galene.query import (  # noqa: E402
-    list_capabilities, describe_capabilities, aggregate, fuel_consumption)
+    list_capabilities, describe_capabilities, aggregate, fuel_consumption,
+    integrated_unit)
 from galene.query.plots import scatter, timeseries, aggregated_series  # noqa: E402
 from galene.interpretation.documents import DocumentIndex, extract_facts  # noqa: E402
 
@@ -339,19 +340,38 @@ def cmd_query(args) -> None:
         sys.exit(f"no parquet for '{args.source}' in window {label}.")
 
     if args.metric == "fuel_consumption":
-        # Resolve the rate signal + unit from FIELD SEMANTICS (not hardcoded).
-        # Prefer an explicit --signal; else find a signal marked aggregation=integral.
+        # Resolve the rate signal + unit from FIELD SEMANTICS (not hardcoded) —
+        # parity with the chat 'consumption/voyage' path (ChatDeps._resolve_rate).
+        # A consumption is the integral of a RATE, so resolve within the set of
+        # rate signals (aggregation == integral), not any column:
+        #   - explicit --signal must BE one of the rate signals;
+        #   - exactly one rate signal -> use it;
+        #   - several, none named -> list them and ask for --signal (no guessing).
         kb = _kb(_asset_type(args))
-        sig, unit = args.signal, args.unit or ""
-        if not sig:
-            for fs in kb.field_semantics(args.source):
-                if fs.get("aggregation") == "integral":
-                    sig, unit = fs["field"], fs.get("unit") or unit
-                    break
-        if not sig:
+        rates = [fs for fs in kb.field_semantics(args.source)
+                 if fs.get("aggregation") == "integral"]
+        if not rates:
             sys.exit("No rate signal known for fuel consumption. Run `describe-fields` "
                      f"on '{args.source}' first, or pass --signal <fuel_rate_field>.")
-        res = fuel_consumption(present, label, sig, unit=unit or "L")
+        rate_by_field = {fs["field"]: fs for fs in rates}
+        if args.signal:
+            if args.signal not in rate_by_field:
+                sys.exit(f"'{args.signal}' isn't a consumption/rate signal on "
+                         f"'{args.source}'. Rate signals: {', '.join(rate_by_field)}.")
+            chosen = rate_by_field[args.signal]
+        elif len(rates) == 1:
+            chosen = rates[0]
+        else:
+            sys.exit("Several consumption/rate signals on "
+                     f"'{args.source}': {', '.join(rate_by_field)}. "
+                     "Pick one with --signal <field>.")
+        sig = chosen["field"]
+        unit = args.unit or chosen.get("unit") or ""
+        # integrating a RATE over time strips its per-hour denominator: L/h -> L,
+        # kg/hr -> kg. No litres default — the unit comes from field semantics
+        # (empty if undescribed), so a total never mislabels as 'L/h' or assumes L.
+        unit = integrated_unit(unit)
+        res = fuel_consumption(present, label, sig, unit=unit)
     else:
         res = aggregate(present, args.signal, args.metric, label, unit=args.unit or "")
     print(term.heading(res.metric) + "\n")

@@ -161,6 +161,13 @@ short scales. Year-over-year handles seasonality.
   alignment) for an honest time-aware null; pairwise_dependence(with_significance)
   annotates edges with pvalue + significant (p<=0.05). Advisory (flags phantoms;
   doesn't hard-drop). Independent random walks correctly come out non-significant.
+- **Degenerate (near-constant) inputs.** ADDRESSED: the fast `dcor.avl` kernel can
+  return an out-of-range garbage value (e.g. ~32) when a signal is effectively
+  constant within a regime slice (zero variance -> a divide-by-tiny), which had
+  leaked into a drift report as a fake "coupling 0.4 -> 32". `distance_correlation`
+  now returns 0.0 for a zero-variance input (a constant is independent of
+  everything) and treats any result outside [0,1] as no dependence. dCor stays
+  bounded; no phantom edge from a flat signal. (Regression-tested.)
 - **Undirected.** dCor/MI/Pearson are symmetric — no causal direction. Directed
   edges (lag / transfer entropy) are a separate, hypothesis-only extension.
 - **O(n^2) cost.** dCor is O(n^2) in samples and O(p^2) in signal pairs. Wide
@@ -268,6 +275,12 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   owns it. Verified: `chat vessel-001` then "where is the ship / list ships
   nearby / what correlates with engine speed" auto-route to ais-own / ais-other /
   engine (incl. discovering engine on confirm) without ever naming a source.
+- **First-contact orientation sweeps all sources**: a neutral "what can you tell me
+  about this ship / what do you know about it / what data do you have" (no
+  notability framing) routes to capabilities and lists EVERY source's fields
+  (capabilities_all), not just the home source — while "what's notable" stays
+  summarize and a source-named "what fields does the engine have" stays single.
+  Orchestrator._is_orientation (deterministic, source-named-suppressed) drives this.
 - **Data-driven signal resolution**: "fuel"/"rpm" -> actual columns via field
   semantics + LLM, no hardcoded mapping.
 - **Behavioral-norm detection (is it OPERATING normally?)**: complements the
@@ -303,7 +316,11 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   fields, and drift IF a known-good baseline exists) and the LLM synthesizes a
   SHORT prioritized summary — drift first, then usage, then structure. Grounded
   (only reorganizes facts, never invents), always with the observed-not-cause
-  caveat; a deterministic template is the offline/stub fallback. No baseline
+  caveat; a deterministic template is the offline/stub fallback. (The fallback is
+  reached whenever the provider does no real synthesis: providers expose a
+  `synthesizes` flag — False on the offline StubProvider — so summarize returns the
+  grounded template instead of the stub's fixed placeholder, rather than relying on
+  a truthiness check the non-empty placeholder would defeat.) No baseline
   required (folds drift in only when present). This is the one intent where the
   LLM does more than route — appropriate for an open-ended overview. Verified with
   and without a baseline.
@@ -495,9 +512,12 @@ values/plots are the same in every mode. Implemented in orchestrator.py
   via field semantics). Discovery core is fully data-driven.
 - REMAINS (acceptable engineering tuning, NOT domain assumptions): grid 10Hz,
   MAX_COLS_PER_SOURCE, sample caps, gap>1h threshold, batch sizes.
-- REMAINS (real, to fix): standalone `query fuel_consumption` still special-cases
-  EngineFuelRate/litres; the chat `value` path already resolves via field
-  semantics instead. Unify by having query resolve from field semantics too.
+- DONE (was "to fix"): standalone `query fuel_consumption` no longer special-cases
+  EngineFuelRate/litres — it resolves the rate signal + unit from field semantics
+  (prefer `--signal`, else the field marked aggregation=integral), identical to the
+  chat consumption/voyage path. Both share `query.integrated_unit` to strip a rate's
+  per-hour denominator on a total (L/h -> L, kg/hr -> kg); no litres default (the
+  unit is whatever field semantics declare, empty if undescribed).
 
 ### Bedrock config (learned live)
 - eu-west-1 requires the regional inference-profile prefix, e.g.
@@ -543,8 +563,10 @@ Remaining highlights:
    authoritative + fused cross-source relationships + a blurred-silhouette warning).
 4. **Retrieval upgrade** — embeddings for document search (current keyword overlap
    pulls ToC noise). **Report formatting** — constrain verbose LLM output.
-5. **Unify query fuel_consumption** to resolve signal/unit/aggregation from field
-   semantics (remove last domain hardcode; chat path already does this).
+5. **Unify query fuel_consumption** — DONE. It resolves signal/unit from field
+   semantics (the last domain hardcode is removed), sharing `query.integrated_unit`
+   with the chat path so a total's unit is derived identically. See §6 "Hardcoding
+   status".
 
 ---
 

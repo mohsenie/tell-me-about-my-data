@@ -5,8 +5,12 @@ Ordered roughly by priority within each section.
 
 ## TESTS
 Functional pytest suite (deterministic, no live LLM needed): `.venv/bin/python -m
-pytest tests/` — 61 pass, 1 skip (the LLM intent-classification case; run it with
-`GALENE_LLM=bedrock python -m pytest tests/`).
+pytest tests/` — passes with a small number of data-conditional skips; the LLM
+intent-classification case (test_intent_routing.py::test_intent_classification)
+runs only with `GALENE_LLM=bedrock python -m pytest tests/`. (Suite has grown well
+past the earlier "61" count as capabilities + regressions were added; run
+`pytest tests/ --co -q | wc -l` for the current tally rather than trusting a fixed
+number here.)
 
 ### WORKING CONVENTION (don't run the whole suite every change)
 Run only the test file for the behavior you touched — each is seconds:
@@ -365,6 +369,16 @@ a lot of what decomposition would, so item 5 is a last resort.
       random walks (phantom, dcor 0.49) come out non-significant; engine physical
       couplings significant p=0.01, 10/45 edges flagged phantom. Advisory annotation
       (not a hard drop). Tested.
+- [x] **dCor degenerate-input guard** — DONE. The fast `dcor.avl` kernel can return
+      an out-of-range value (~32) when a signal is effectively constant within a
+      regime slice (zero variance), which leaked into a drift report as a fake
+      "coupling 0.41 -> 32.23". dependence.distance_correlation now returns 0.0 when
+      either input has ~zero variance (a constant is independent of everything) and
+      clamps any result outside [0,1] to 0.0. The slower mergesort/naive paths were
+      already correct (0.0); only the fast path needed the guard. The bad value was
+      computed LIVE at detect time (window fingerprint isn't persisted), so no stored
+      artifacts held it — scanned all artifacts/*.json, none out of range. Found via
+      live analyst-question testing. Regression test in test_discovery_reporting.py.
 - [x] **Fused clustering blur** — DONE (hybrid). fusion.fused_relationship_graph:
       computes the fused GLOBAL graph (the value = CROSS-SOURCE edges) but treats
       fused REGIMES as a diagnostic only — reports regime_quality {silhouette, k,

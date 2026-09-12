@@ -227,6 +227,31 @@ def test_wants_all_sources_shared_guard(fake, deps, kb_ship):
     assert not f("what can I ask about")
 
 
+def test_is_orientation_first_contact_guard(fake, deps, kb_ship):
+    """A first-contact 'tell me about the ship' orientation sweeps every source;
+    a source-named capabilities ask stays single."""
+    o, _ = _session(fake, deps, kb_ship)
+    f = o._is_orientation
+    assert f("what can you tell me about this ship?")
+    assert f("tell me about this ship")
+    assert f("what do you know about it?")
+    assert f("what have you got on it?")
+    # naming a source suppresses the whole-vessel sweep
+    assert not f("tell me about the engine")
+    # a plain field-list ask isn't an 'about the asset' orientation
+    assert not f("what fields are there?")
+
+
+def test_orientation_routes_capabilities_to_all_sources(fake, deps, kb_ship, has_data):
+    """An orientation message dispatched as capabilities sweeps EVERY source,
+    not just the home source."""
+    o, _ = _session(fake, deps, kb_ship, home="engine",
+                    intent="capabilities")
+    out = o._dispatch("capabilities", "what can you tell me about this ship?")
+    for s in deps.all_sources():
+        assert s in out                      # every source represented
+
+
 def test_capabilities_all_covers_every_source(deps, has_data):
     out = deps.capabilities_all()
     for s in deps.all_sources():

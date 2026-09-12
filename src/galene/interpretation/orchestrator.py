@@ -43,7 +43,12 @@ intent label (reply with ONLY the label). Read carefully — a signal NAME appea
 does NOT make it a relationship question.
 
 - capabilities: what fields/signals exist, what they can query/ask, or general
-    "help" / "what can you do" requests.
+    "help" / "what can you do" requests. ALSO the first-contact ORIENTATION
+    question — "what can you tell me about this <asset>?", "what do you know about
+    it?", "tell me about this ship", "what have you got on it?" — i.e. "what's
+    here / what can I ask", with NO notability or concern framing. (If they ask
+    what's NOTABLE / interesting / worth attention / a summary of findings, that
+    is summarize, not this.)
 - describe_fields: asking what the fields MEAN — their definitions/units. e.g.
     "what do the fields mean?", "what does X measure?", "what units is X in?".
     (Merely asking WHICH fields EXIST is capabilities, not describe_fields.) NOT
@@ -100,11 +105,14 @@ does NOT make it a relationship question.
     "how does the engine operate", "what states does it run in", "usage
     breakdown". Wants the discovered operating regimes + how much time in each,
     NOT the list of fields (capabilities) and NOT a per-signal value.
-- summarize: an OPEN-ENDED overview request — "what is notable", "summarize my
-    data", "what should I pay attention to", "give me an overview", "anything
-    interesting", "what stands out". Wants a short prioritized summary of the
-    whole picture, NOT a single metric and NOT a specific drift check. (If they
-    ask specifically "has X drifted / is it normal", that's anomaly, not this.)
+- summarize: an OPEN-ENDED request for what is NOTABLE / worth attention —
+    "what is notable", "summarize my data", "what should I pay attention to",
+    "give me an overview", "anything interesting", "what stands out". Wants a
+    short prioritized summary of FINDINGS (behavior/regimes/drift), NOT a single
+    metric and NOT a specific drift check. The tell is notability/attention
+    framing. (A neutral "what can you tell me about the ship / what data is here"
+    with NO notability framing is capabilities, not this. If they ask
+    specifically "has X drifted / is it normal", that's anomaly, not this.)
 - anomaly: asking whether anything has DRIFTED / changed / is abnormal / wrong /
     degrading vs normal — "has anything changed?", "is the engine behaving
     normally?", "any anomalies?", "check for drift", "what's different from the
@@ -290,6 +298,23 @@ class Orchestrator:
             "any data", "anywhere", "all of them", "everything", "any source",
             "whole vessel", "entire vessel", "overall", "overview"))
         if not broad:
+            return False
+        named = any(s.lower() in low for s in self.deps.all_sources())
+        return not named
+
+    def _is_orientation(self, message: str) -> bool:
+        """True for a first-contact 'tell me about this asset / what do you know
+        about it / what can you tell me about the ship' — a whole-vessel ORIENTATION
+        that should sweep EVERY source's fields, not just the home source. Distinct
+        from _wants_all_sources (which keys off 'my data'/'all sources' wording);
+        this catches the natural 'about the <asset>' framing. UNLESS a specific
+        source is named (then keep it single)."""
+        low = (message or "").lower()
+        orient = any(p in low for p in (
+            "about this", "about the", "about it", "about our", "about your",
+            "know about", "tell me about", "what have you got",
+            "what do you have on"))
+        if not orient:
             return False
         named = any(s.lower() in low for s in self.deps.all_sources())
         return not named
@@ -551,7 +576,9 @@ class Orchestrator:
         d = self.deps
         src = self._active   # routed source for this turn (may differ from home)
         if intent == "capabilities":
-            if self._wants_all_sources(message):
+            # broad "my data / all sources" OR a first-contact "tell me about the
+            # ship" orientation -> sweep every source; a named source stays single.
+            if self._wants_all_sources(message) or self._is_orientation(message):
                 return d.capabilities_all()
             return d.capabilities(src)
 

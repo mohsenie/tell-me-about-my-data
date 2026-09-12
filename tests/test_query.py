@@ -390,3 +390,98 @@ def test_signal_by_location_cells(deps, pos_source, globs):
     assert len(cells) >= 1
     for c in cells:
         assert c["n"] > 0 and "value" in c
+
+
+# ---------------- integrated_unit (shared rate->total unit helper) ----------
+def test_integrated_unit_strips_per_hour():
+    from galene.query import integrated_unit
+    # a per-hour rate loses its /h denominator on a time-integral (a total)
+    assert integrated_unit("L/h") == "L"
+    assert integrated_unit("kg/hr") == "kg"
+    assert integrated_unit("L/hour") == "L"
+    assert integrated_unit("L/ h") == "L"
+    assert integrated_unit("m3 per hour") == "m3"
+
+
+def test_integrated_unit_leaves_non_hourly_and_empty_unchanged():
+    from galene.query import integrated_unit
+    assert integrated_unit("") == ""
+    assert integrated_unit(None) == ""          # tolerate missing unit
+    assert integrated_unit("rpm") == "rpm"
+    assert integrated_unit("m/s") == "m/s"       # /s is not /h -> untouched
+    assert integrated_unit("degC") == "degC"
+
+
+def test_chatdeps_integrated_unit_delegates_to_shared_helper(deps):
+    # the chat path's _integrated_unit is now a thin wrapper over the shared one
+    from galene.query import integrated_unit
+    for u in ("L/h", "kg/hr", "m/s", "", "rpm"):
+        assert deps._integrated_unit(u) == integrated_unit(u)
+
+
+# ---------------- CLI query fuel_consumption: rate-signal resolution --------
+def _query_args(source, **over):
+    """A minimal argparse-like Namespace for cmd_query (fuel_consumption path)."""
+    import argparse
+    ns = argparse.Namespace(
+        source=source, metric="fuel_consumption", signal=None, unit=None,
+        days=None, to=None, vessel=config.DEFAULT_VESSEL, asset_type="ship")
+    setattr(ns, "from", None)   # 'from' is a keyword, set via setattr
+    for k, v in over.items():
+        setattr(ns, k, v)
+    return ns
+
+
+def _rate_signals(source):
+    from galene.cli_helpers import kb as _kb
+    k = _kb("ship")
+    return [fs["field"] for fs in k.field_semantics(source)
+            if fs.get("aggregation") == "integral"]
+
+
+def test_cli_fuel_consumption_resolves_single_rate(capsys, has_data):
+    """With exactly one rate signal, fuel_consumption resolves it from field
+    semantics (no --signal needed) and reports a total, not a rate."""
+    from galene import cli
+    rates = _rate_signals("engine")
+    if len(rates) != 1:
+        pytest.skip(f"engine has {len(rates)} rate signals, test assumes 1")
+    cli.cmd_query(_query_args("engine", days=2))
+    out = capsys.readouterr().out
+    assert rates[0] in out
+    assert "total" in out.lower()           # a total (integral), not "avg"
+
+
+def test_cli_fuel_consumption_explicit_valid_signal(capsys, has_data):
+    from galene import cli
+    rates = _rate_signals("engine")
+    if not rates:
+        pytest.skip("no rate signal on engine")
+    cli.cmd_query(_query_args("engine", signal=rates[0], days=2))
+    out = capsys.readouterr().out
+    assert rates[0] in out and "total" in out.lower()
+
+
+def test_cli_fuel_consumption_rejects_non_rate_signal(has_data):
+    """Passing a real column that is NOT a rate must error (and list the rate
+    signals) rather than silently integrating, e.g. a temperature."""
+    from galene import cli
+    rates = _rate_signals("engine")
+    if not rates:
+        pytest.skip("no rate signal on engine")
+    # a non-rate engine column
+    non_rate = "EngineCoolantTemperature"
+    with pytest.raises(SystemExit) as exc:
+        cli.cmd_query(_query_args("engine", signal=non_rate, days=2))
+    msg = str(exc.value)
+    assert non_rate in msg and rates[0] in msg   # names the offender + the choices
+
+
+def test_cli_fuel_consumption_no_rate_source_errors(has_data):
+    """A source with no rate signal gives a helpful describe-fields message."""
+    from galene import cli
+    if _rate_signals("vibration"):
+        pytest.skip("vibration unexpectedly has a rate signal")
+    with pytest.raises(SystemExit) as exc:
+        cli.cmd_query(_query_args("vibration", days=2))
+    assert "describe-fields" in str(exc.value)

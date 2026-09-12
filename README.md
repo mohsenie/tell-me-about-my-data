@@ -263,7 +263,11 @@ LLM-synthesis prose paths are intentionally light (non-deterministic output).
 ## Notes
 
 - Distance correlation uses the fast O(n log n) algorithm (`dcor`), ~100x faster
-  than naive, identical results. See `src/galene/discovery/README.md`.
+  than naive, identical results — **except** on a (near-)constant input, where the
+  fast AVL kernel can emit an out-of-range value; `distance_correlation` guards this
+  (a zero-variance series -> dCor 0, and any result outside [0,1] is treated as no
+  dependence), so a degenerate signal never produces a phantom "coupling". See
+  `src/galene/discovery/README.md`.
 - **Direct vs indirect links:** partial correlation (controlling for all other
   signals) flags edges that are strong only because of a shared driver (e.g. two
   pressures that both track engine load), so the report separates a real
