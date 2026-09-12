@@ -474,19 +474,29 @@ already exists (relational drift, behavioral-norm, joint, regime/sequencing);
 this is the alerting/CRUD layer on top. Batch/periodic by design (a `watch run`
 you cron or a Kiro hook), NOT real-time streaming.
 
-- [ ] **Watch registry + CRUD** (create/list/delete, persisted JSON), id-stable,
-      addressable by description ("the watch on engine temperature").
-- [ ] **Two condition types to start:** DRIFT (reuses detect_drift; needs a known-
-      good baseline — check + prompt if missing) and THRESHOLD (a computed value/
-      voyage-leg total crossing a user-given bound, e.g. "fuel > 150 L per journey";
-      record the unit).
-- [ ] **Evaluation (`watch run`):** evaluate watches against NEW data since last
-      run (incremental window + de-dup so the same event doesn't re-alert), gate by
-      severity. Honest alerts: report the OBSERVED change (which couplings / which
-      value), never assert a cause; rank, don't cry-wolf (invariant #6).
-- [ ] **Action, split from trigger:** default = write a structured alert to a
-      file/log + exit code (scriptable, no assumptions). DELIVERY (webhook/email to
-      the resolved actor) is a separate OPT-IN network action, later.
+- [x] **Watch registry + CRUD** — DONE. anomaly/watches.py (WatchRegistry):
+      persisted watch rows at artifacts/watches.json, id-stable (idempotent by
+      source+type+params), create/list/delete, with next_run (schedule) +
+      last_state (de-dup) + a runtime tag (threshold=light, anomaly/regime=heavy).
+      Chat 'watches' intent + ChatDeps.create_watch/list_watches/delete_watch
+      (delete by id or description, asks which if ambiguous).
+- [x] **Condition types** — DONE (three). THRESHOLD (a computed aggregate crossing
+      a user-given bound, reuses compute.aggregate); ANOMALY (relational drift vs a
+      known-good baseline, reuses detect_drift; 'no_baseline' state if none set);
+      REGIME (the regime-event layer of the same drift result).
+- [x] **Evaluation (`watch run`)** — DONE. anomaly/watch_eval.py: evaluate() per
+      condition + run_watches() evaluates DUE watches (next_run passed), fires ONLY
+      on a state CHANGE (last_state de-dup), advances next_run. Stateless +
+      idempotent — safe to call as often as a cron/tick likes. Honest: reports the
+      OBSERVED value/change, never a cause. `galene watch run` is the entry point a
+      cron line / EventBridge tick calls (same code -> cloud worker later).
+- [x] **Action, split from trigger** — DONE (default). Writes a structured alert
+      (JSONL) to artifacts/alerts.log, targeted at the resolved actor. DELIVERY
+      (webhook/email) remains a separate OPT-IN network action (deferred).
+- [ ] **Notify target resolved via actors** — DONE at creation (create_watch calls
+      resolve_actor, clarifies an ambiguous name up front, stores the actor id).
+- Tested (tests/test_watches.py + dispatch) and verified live via Bedrock
+  (create/list/delete route; run fires then de-dups; off-domain still refused).
 - [ ] **OPEN DECISION — baseline freshness (product call, blocks anomaly watches).**
       Drift compares against an operator-designated known-good baseline. Set once
       and reused, or refreshed periodically? A stale baseline over/under-alarms as
